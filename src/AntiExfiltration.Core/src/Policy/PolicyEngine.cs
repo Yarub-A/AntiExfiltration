@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+
 using AntiExfiltration.Core.Capture;
 using AntiExfiltration.Core.Context;
 
@@ -49,6 +50,13 @@ public sealed class PolicyEngine
             {
                 highestRisk = finding.Risk;
                 primaryReason = finding.Reason;
+
+        foreach (var analyzer in _analyzers)
+        {
+            var result = analyzer.Analyze(packet);
+            if (result.IsSensitive)
+            {
+                return result with { Process = process };
             }
         }
 
@@ -59,6 +67,11 @@ public sealed class PolicyEngine
             Reason = primaryReason,
             Signals = aggregatedSignals,
             Findings = findings,
+
+            IsSensitive = false,
+            Risk = Common.RiskLevel.Low,
+            Reason = "No analyzer matched",
+            Signals = new Dictionary<string, object?>(),
             Process = process
         };
     }

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+
 using System.Text;
 using System.Text.RegularExpressions;
 using AntiExfiltration.Core.Capture;
@@ -22,6 +23,19 @@ public sealed class SignatureAnalyzer : IAnalyzer
 
     public AnalyzerFinding Analyze(RawPacket packet, ProcessInfo process)
     {
+
+    private readonly IProcessContextResolver _contextResolver;
+
+    public SignatureAnalyzer(IThreatIntelProvider threatIntelProvider, IProcessContextResolver contextResolver)
+    {
+        _threatIntelProvider = threatIntelProvider;
+        _contextResolver = contextResolver;
+    }
+
+    public AnalysisResult Analyze(RawPacket packet)
+    {
+        var process = _contextResolver.Resolve(packet.ProcessId);
+
         if (_threatIntelProvider.IsMalicious(packet))
         {
             return CreateHighRiskResult(packet, process, "IOC match");
@@ -49,6 +63,24 @@ public sealed class SignatureAnalyzer : IAnalyzer
             Risk: RiskLevel.High,
             Reason: reason,
             Signals: new Dictionary<string, object?>
+
+        return new AnalysisResult
+        {
+            IsSensitive = false,
+            Risk = RiskLevel.Low,
+            Reason = "No signature hit",
+            Signals = new Dictionary<string, object?>(),
+            Process = process
+        };
+    }
+
+    private static AnalysisResult CreateHighRiskResult(RawPacket packet, ProcessInfo process, string reason)
+        => new()
+        {
+            IsSensitive = true,
+            Risk = RiskLevel.High,
+            Reason = reason,
+            Signals = new Dictionary<string, object?>
             {
                 ["Destination"] = packet.Destination.ToString(),
                 ["Protocol"] = packet.Protocol.ToString()
@@ -62,9 +94,23 @@ public sealed class SignatureAnalyzer : IAnalyzer
             Risk: RiskLevel.Medium,
             Reason: reason,
             Signals: new Dictionary<string, object?>
+
+            Process = process
+        };
+
+    private static AnalysisResult CreateMediumRiskResult(RawPacket packet, ProcessInfo process, string reason, string excerpt)
+        => new()
+        {
+            IsSensitive = true,
+            Risk = RiskLevel.Medium,
+            Reason = reason,
+            Signals = new Dictionary<string, object?>
             {
                 ["Excerpt"] = excerpt[..Math.Min(128, excerpt.Length)],
                 ["Process"] = process.Name
             },
             Process: process);
+
+            Process = process
+        };
 }

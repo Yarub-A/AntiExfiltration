@@ -1,6 +1,7 @@
 using AntiExfiltration.Core.Capture;
 using AntiExfiltration.Core.Context;
 
+
 namespace AntiExfiltration.Core.Policy;
 
 /// <summary>
@@ -9,4 +10,6 @@ namespace AntiExfiltration.Core.Policy;
 public interface IAnalyzer
 {
     AnalyzerFinding Analyze(RawPacket packet, ProcessInfo process);
+
+    AnalysisResult Analyze(RawPacket packet);
 }

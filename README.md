@@ -32,6 +32,8 @@
 | Capture | اعتراض الحزم الصادرة وربطها بمعرف العملية. | `RawPacket`, `ICaptureProvider` |
 | Context | جمع سياق العملية (اسم، توقيع، أصل). | `ProcessInfo`, `IProcessContextResolver` |
 | Policy | تحليل المحتوى والسياق عبر عدة محللات وإرجاع أدلة موحدة. | `PolicyEngine`, `SignatureAnalyzer`, `EntropyAnalyzer`, `AnalyzerFinding` |
+=======
+| Policy | تحليل المحتوى والسياق لتحديد الحساسية. | `PolicyEngine`, `SignatureAnalyzer`, `EntropyAnalyzer` |
 | Decision | تحويل نتيجة التحليل إلى قرار تنفيذي. | `DecisionEngine`, `DecisionEngineOptions` |
 | Action | تنفيذ القرار (منع، تشويش، قتل عملية). | `ActionExecutor`, `IEnforcementAction` |
 | Intel | دمج مؤشرات التهديد الخارجية. | `IThreatIntelProvider`, `ThreatIntelManager` |
@@ -41,6 +43,10 @@
 ## 🧪 الاختبارات
 - مشروع `AntiExfiltration.Tests` يحتوي على اختبارات وحدات لـ `EntropyAnalyzer` + `PolicyEngine` لضمان سلوك المحللات والتجميع.
 - أضف اختبارات تكامل لاحقًا للتأكد من صحة تدفق القرارات عبر `AntiExfiltrationPipeline`.
+=======
+## 🧪 الاختبارات المستقبلية
+- إضافة مشروع `AntiExfiltration.Tests` باستخدام xUnit لتغطية المحللات (Entropy/Signature).
+- كتابة اختبارات تكامل تتأكد من صحة تدفق القرارات عبر `AntiExfiltrationPipeline`.
 
 ## ✅ خارطة الطريق (Milestones)
 1. **Learning Mode:** تفعيل الاعتراض والتسجيل فقط لمراقبة السلوك.

@@ -2,6 +2,8 @@ using AntiExfiltration.Core.Action;
 using AntiExfiltration.Core.Capture;
 using AntiExfiltration.Core.Context;
 using AntiExfiltration.Core.Decisions;
+=======
+using AntiExfiltration.Core.Decision;
 using AntiExfiltration.Core.Intel;
 using AntiExfiltration.Core.Logging;
 using AntiExfiltration.Core.Policy;
@@ -20,6 +22,9 @@ var analyzers = new IAnalyzer[]
 {
     new SignatureAnalyzer(threatIntel),
     new EntropyAnalyzer()
+=======
+    new SignatureAnalyzer(threatIntel, processResolver),
+    new EntropyAnalyzer(processResolver)
 };
 var policyEngine = new PolicyEngine(analyzers, processResolver);
 var decisionEngine = new DecisionEngine(new DecisionEngineOptions());

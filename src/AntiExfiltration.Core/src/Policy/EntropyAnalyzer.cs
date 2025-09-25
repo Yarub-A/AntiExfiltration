@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+
 using AntiExfiltration.Core.Capture;
 using AntiExfiltration.Core.Common;
 using AntiExfiltration.Core.Context;
@@ -22,6 +23,20 @@ public sealed class EntropyAnalyzer : IAnalyzer
         if (packet.Payload.Length == 0)
         {
             return CreateBenignResult(process, "Empty payload");
+    private readonly IProcessContextResolver _contextResolver;
+    private readonly double _threshold;
+
+    public EntropyAnalyzer(IProcessContextResolver contextResolver, double threshold = 7.5)
+    {
+        _contextResolver = contextResolver;
+        _threshold = threshold;
+    }
+
+    public AnalysisResult Analyze(RawPacket packet)
+    {
+        if (packet.Payload.Length == 0)
+        {
+            return CreateBenignResult(packet.ProcessId, "Empty payload");
         }
 
         var entropy = CalculateShannonEntropy(packet.Payload);
@@ -33,6 +48,14 @@ public sealed class EntropyAnalyzer : IAnalyzer
                 Risk: RiskLevel.High,
                 Reason: $"High entropy payload ({entropy:F2})",
                 Signals: new Dictionary<string, object?>
+
+            var process = _contextResolver.Resolve(packet.ProcessId);
+            return new AnalysisResult
+            {
+                IsSensitive = true,
+                Risk = RiskLevel.High,
+                Reason = $"High entropy payload ({entropy:F2})",
+                Signals = new Dictionary<string, object?>
                 {
                     ["Entropy"] = entropy,
                     ["Size"] = packet.Payload.Length
@@ -52,6 +75,25 @@ public sealed class EntropyAnalyzer : IAnalyzer
             Reason: reason,
             Signals: new Dictionary<string, object?>(),
             Process: process);
+
+                Process = process
+            };
+        }
+
+        return CreateBenignResult(packet.ProcessId, $"Entropy below threshold ({entropy:F2})");
+    }
+
+    private AnalysisResult CreateBenignResult(int processId, string reason)
+    {
+        var process = _contextResolver.Resolve(processId);
+        return new AnalysisResult
+        {
+            IsSensitive = false,
+            Risk = RiskLevel.Low,
+            Reason = reason,
+            Signals = new Dictionary<string, object?>(),
+            Process = process
+        };
     }
 
     private static double CalculateShannonEntropy(byte[] data)
