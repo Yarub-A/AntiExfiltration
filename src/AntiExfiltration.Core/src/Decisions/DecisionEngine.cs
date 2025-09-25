@@ -1,7 +1,7 @@
 using AntiExfiltration.Core.Common;
 using AntiExfiltration.Core.Policy;
 
-namespace AntiExfiltration.Core.Decision;
+namespace AntiExfiltration.Core.Decisions;
 
 /// <summary>
 /// Applies configurable policies to translate analysis results into enforcement decisions.

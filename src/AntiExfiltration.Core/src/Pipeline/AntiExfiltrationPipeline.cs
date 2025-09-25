@@ -1,6 +1,6 @@
 using AntiExfiltration.Core.Action;
 using AntiExfiltration.Core.Capture;
-using AntiExfiltration.Core.Decision;
+using AntiExfiltration.Core.Decisions;
 using AntiExfiltration.Core.Policy;
 
 namespace AntiExfiltration.Core.Pipeline;

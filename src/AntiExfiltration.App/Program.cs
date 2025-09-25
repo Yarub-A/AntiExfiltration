@@ -1,7 +1,7 @@
 using AntiExfiltration.Core.Action;
 using AntiExfiltration.Core.Capture;
 using AntiExfiltration.Core.Context;
-using AntiExfiltration.Core.Decision;
+using AntiExfiltration.Core.Decisions;
 using AntiExfiltration.Core.Intel;
 using AntiExfiltration.Core.Logging;
 using AntiExfiltration.Core.Policy;
