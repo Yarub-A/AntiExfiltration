@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 using System.Text;
 using System.Text.RegularExpressions;
 using AntiExfiltration.Core.Capture;
@@ -14,6 +16,14 @@ public sealed class SignatureAnalyzer : IAnalyzer
 {
     private static readonly Regex SensitiveKeywordRegex = new("(password|token|apikey|cookie|credential)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private readonly IThreatIntelProvider _threatIntelProvider;
+    public SignatureAnalyzer(IThreatIntelProvider threatIntelProvider)
+    {
+        _threatIntelProvider = threatIntelProvider;
+    }
+
+    public AnalyzerFinding Analyze(RawPacket packet, ProcessInfo process)
+    {
+
     private readonly IProcessContextResolver _contextResolver;
 
     public SignatureAnalyzer(IThreatIntelProvider threatIntelProvider, IProcessContextResolver contextResolver)
@@ -37,6 +47,23 @@ public sealed class SignatureAnalyzer : IAnalyzer
             return CreateMediumRiskResult(packet, process, "Sensitive keyword detected", payloadString);
         }
 
+        return new AnalyzerFinding(
+            Analyzer: nameof(SignatureAnalyzer),
+            IsSensitive: false,
+            Risk: RiskLevel.Low,
+            Reason: "No signature hit",
+            Signals: new Dictionary<string, object?>(),
+            Process: process);
+    }
+
+    private static AnalyzerFinding CreateHighRiskResult(RawPacket packet, ProcessInfo process, string reason)
+        => new(
+            Analyzer: nameof(SignatureAnalyzer),
+            IsSensitive: true,
+            Risk: RiskLevel.High,
+            Reason: reason,
+            Signals: new Dictionary<string, object?>
+
         return new AnalysisResult
         {
             IsSensitive = false,
@@ -58,6 +85,16 @@ public sealed class SignatureAnalyzer : IAnalyzer
                 ["Destination"] = packet.Destination.ToString(),
                 ["Protocol"] = packet.Protocol.ToString()
             },
+            Process: process);
+
+    private static AnalyzerFinding CreateMediumRiskResult(RawPacket packet, ProcessInfo process, string reason, string excerpt)
+        => new(
+            Analyzer: nameof(SignatureAnalyzer),
+            IsSensitive: true,
+            Risk: RiskLevel.Medium,
+            Reason: reason,
+            Signals: new Dictionary<string, object?>
+
             Process = process
         };
 
@@ -72,6 +109,8 @@ public sealed class SignatureAnalyzer : IAnalyzer
                 ["Excerpt"] = excerpt[..Math.Min(128, excerpt.Length)],
                 ["Process"] = process.Name
             },
+            Process: process);
+
             Process = process
         };
 }

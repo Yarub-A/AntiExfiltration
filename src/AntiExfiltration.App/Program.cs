@@ -1,6 +1,8 @@
 using AntiExfiltration.Core.Action;
 using AntiExfiltration.Core.Capture;
 using AntiExfiltration.Core.Context;
+using AntiExfiltration.Core.Decisions;
+=======
 using AntiExfiltration.Core.Decision;
 using AntiExfiltration.Core.Intel;
 using AntiExfiltration.Core.Logging;
@@ -18,6 +20,9 @@ ICaptureProvider captureProvider = new InMemoryCaptureProvider();
 IProcessContextResolver processResolver = new InMemoryProcessContextResolver();
 var analyzers = new IAnalyzer[]
 {
+    new SignatureAnalyzer(threatIntel),
+    new EntropyAnalyzer()
+=======
     new SignatureAnalyzer(threatIntel, processResolver),
     new EntropyAnalyzer(processResolver)
 };

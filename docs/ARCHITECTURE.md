@@ -27,6 +27,8 @@ AntiExfiltration.sln
 |--------|---------|-----------|
 | Capture | Intercept outbound traffic and surface events. | `ICaptureProvider`, `RawPacket` |
 | Context | Resolve process lineage, signatures, and trust levels. | `IProcessContextResolver`, `ProcessInfo` |
+| Policy | Analyse payloads and metadata to produce aggregated `AnalysisResult` instances. | `PolicyEngine`, `SignatureAnalyzer`, `EntropyAnalyzer`, `AnalyzerFinding` |
+=======
 | Policy | Analyse payloads and metadata to produce `AnalysisResult`. | `PolicyEngine`, `SignatureAnalyzer`, `EntropyAnalyzer` |
 | Decision | Translate risk scores to enforcement outcomes. | `DecisionEngine`, `DecisionEngineOptions` |
 | Action | Execute block/obfuscate/alert flows. | `ActionExecutor`, `IPacketDropper`, `IDataObfuscator`, `IProcessTerminator` |
@@ -37,6 +39,9 @@ AntiExfiltration.sln
 ## Data Flow
 
 1. `ICaptureProvider` raises `PacketCaptured` with a `RawPacket` payload.
+2. `PolicyEngine` enriches the packet with `ProcessInfo`, runs analyzers sequentially, and merges their `AnalyzerFinding` outputs.
+3. `AnalysisResult` (with merged evidence and risk) feeds into `DecisionEngine` which applies configurable default actions per `RiskLevel`.
+=======
 2. `PolicyEngine` enriches the packet with `ProcessInfo` and runs analyzers sequentially.
 3. `AnalysisResult` feeds into `DecisionEngine` which applies configurable default actions per `RiskLevel`.
 4. `ActionExecutor` enforces the decision and logs structured events.
