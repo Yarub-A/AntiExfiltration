@@ -16,9 +16,7 @@ public static class TcpIpHelper
         foreach (var row in tcpRows)
         {
             if (row.RemoteEndPoint.Equals(remote))
-            {
                 return row.ProcessId;
-            }
         }
 
         return 0;
@@ -29,9 +27,7 @@ public static class TcpIpHelper
     public static string DetectProtocol(ReadOnlySpan<byte> packet)
     {
         if (packet.Length < 20)
-        {
             return "UNKNOWN";
-        }
 
         return packet[9] switch
         {
@@ -46,24 +42,22 @@ public static class TcpIpHelper
     {
         var bufferSize = 0;
         var result = IpHlpApi.GetExtendedTcpTable(IntPtr.Zero, ref bufferSize, true, AF_INET, TcpTableClass.TCP_TABLE_OWNER_PID_ALL, 0);
-        if (result != 0 && result != 122)
-        {
+        if (result != 0 && result != 122) // 122 = ERROR_INSUFFICIENT_BUFFER
             throw new InvalidOperationException($"GetExtendedTcpTable failed: {result}");
-        }
 
         var buffer = Marshal.AllocHGlobal(bufferSize);
         try
         {
             result = IpHlpApi.GetExtendedTcpTable(buffer, ref bufferSize, true, AF_INET, TcpTableClass.TCP_TABLE_OWNER_PID_ALL, 0);
             if (result != 0)
-            {
                 throw new InvalidOperationException($"GetExtendedTcpTable failed: {result}");
-            }
 
             var table = Marshal.PtrToStructure<MibTcpTableOwnerPid>(buffer);
-            var rows = new List<TcpConnectionInfo>(table.NumEntries);
+            var numEntries = table.NumEntries > int.MaxValue ? int.MaxValue : (int)table.NumEntries;
+            var rows = new List<TcpConnectionInfo>(numEntries);
+
             var rowPtr = buffer + Marshal.SizeOf<MibTcpTableOwnerPid>();
-            for (var i = 0; i < table.NumEntries; i++)
+            for (var i = 0; i < numEntries; i++)
             {
                 var row = Marshal.PtrToStructure<MibTcpRowOwnerPid>(rowPtr);
                 rows.Add(new TcpConnectionInfo(

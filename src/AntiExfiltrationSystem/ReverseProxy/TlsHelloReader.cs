@@ -20,19 +20,17 @@ public static class TlsHelloReader
         {
             var bytesRead = await FillAsync(baseStream, buffer, cancellationToken).ConfigureAwait(false);
             if (bytesRead <= 0)
-            {
                 return null;
-            }
 
-            // نسخ البيانات المقروءة مسبقًا إلى مصفوفة منفصلة لتجنب مشاكل الـ Pool reuse
+            // Copy prefetched TLS ClientHello bytes to a safe buffer
             var prefetch = new byte[bytesRead];
             Buffer.BlockCopy(buffer, 0, prefetch, 0, bytesRead);
 
-            // تحليل اسم الخادم من TLS ClientHello (Server Name Indication)
+            // Parse SNI hostname
             var hostName = ParseServerName(prefetch.AsSpan());
             var preloaded = new PreloadedStream(prefetch, baseStream);
 
-            // الحصول على بيانات الاتصال لمعرفة العملية المسؤولة
+            // Map connection to originating process
             var remote = (IPEndPoint)client.Client.RemoteEndPoint!;
             var local = (IPEndPoint)client.Client.LocalEndPoint!;
             var processId = SocketProcessMapper.ResolveProcessId(remote, local);
@@ -81,7 +79,7 @@ public static class TlsHelloReader
             var extensionLength = (clientHello[pointer + 2] << 8) + clientHello[pointer + 3];
             pointer += 4;
 
-            if (extensionType == 0) // SNI Extension
+            if (extensionType == 0) // SNI extension
             {
                 var serverNameListLength = (clientHello[pointer] << 8) + clientHello[pointer + 1];
                 if (serverNameListLength <= 0)
@@ -90,9 +88,7 @@ public static class TlsHelloReader
                 var serverNameType = clientHello[pointer + 2];
                 var hostLength = (clientHello[pointer + 3] << 8) + clientHello[pointer + 4];
                 if (serverNameType == 0 && pointer + 5 + hostLength <= end)
-                {
                     return Encoding.ASCII.GetString(clientHello.Slice(pointer + 5, hostLength));
-                }
             }
 
             pointer += extensionLength;
@@ -106,7 +102,8 @@ public static class TlsHelloReader
         var offset = 0;
         while (offset < buffer.Length)
         {
-            var read = await stream.ReadAsync(buffer.AsMemory(offset, buffer.Length - offset), cancellationToken).ConfigureAwait(false);
+            var read = await stream.ReadAsync(buffer.AsMemory(offset, buffer.Length - offset), cancellationToken)
+                .ConfigureAwait(false);
             if (read == 0)
                 break;
 
@@ -169,7 +166,8 @@ internal sealed class PreloadedStream : Stream
         return await _inner.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
     }
 
-    public override void Write(byte[] buffer, int offset, int count) => _inner.Write(buffer, offset, count);
+    public override void Write(byte[] buffer, int offset, int count) =>
+        _inner.Write(buffer, offset, count);
 
     public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
         _inner.WriteAsync(buffer, offset, count, cancellationToken);
