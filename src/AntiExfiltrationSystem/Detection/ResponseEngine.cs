@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Net;
-using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
+using AntiExfiltrationSystem.Utilities;
 
 namespace AntiExfiltrationSystem.Detection;
 
@@ -70,7 +70,7 @@ public sealed class ResponseEngine
 
     private static void TerminateConnection(Process process)
     {
-        foreach (var connection in IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpConnections().Where(c => c.ProcessId == process.Id))
+        foreach (var connection in TcpIpHelper.GetActiveConnections().Where(c => c.ProcessId == process.Id))
         {
             TcpReset(connection.LocalEndPoint, connection.RemoteEndPoint);
         }

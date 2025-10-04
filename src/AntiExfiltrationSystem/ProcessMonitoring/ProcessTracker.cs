@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using AntiExfiltrationSystem.Utilities;
 
@@ -107,7 +108,10 @@ public sealed class ProcessTracker
                 return new SignatureStatus { IsSigned = false, IsTrusted = false, Subject = "Unknown" };
             }
 
-            var signer = X509Certificate2.CreateFromSignedFile(path);
+            // Use X509Certificate + X509Certificate2 for broader compatibility
+            var certificate = X509Certificate.CreateFromSignedFile(path);
+            var signer = new X509Certificate2(certificate);
+
             var chain = new X509Chain
             {
                 ChainPolicy =

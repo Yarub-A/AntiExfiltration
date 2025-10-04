@@ -24,9 +24,11 @@ public static class TlsHelloReader
                 return null;
             }
 
-            var span = buffer.AsSpan(0, bytesRead);
-            var hostName = ParseServerName(span);
-            var preloaded = new PreloadedStream(buffer[..bytesRead], baseStream);
+            var prefetch = new byte[bytesRead];
+            Buffer.BlockCopy(buffer, 0, prefetch, 0, bytesRead);
+            var hostName = ParseServerName(prefetch.AsSpan());
+            var preloaded = new PreloadedStream(prefetch, baseStream);
+
             var remote = (IPEndPoint)client.Client.RemoteEndPoint!;
             var local = (IPEndPoint)client.Client.LocalEndPoint!;
             var processId = SocketProcessMapper.ResolveProcessId(remote, local);
