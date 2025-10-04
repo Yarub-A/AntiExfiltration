@@ -1,70 +1,79 @@
 # AntiExfiltration
 
-حل شامل لحماية أنظمة ويندوز من تسريب البيانات، يعتمد على اعتراض الشبكات، تحليل الذاكرة، وتتبع العمليات في الزمن الحقيقي. يشمل المشروع خدمة تعمل بامتيازات مرتفعة، وكونسول مراقبة غني.
+Comprehensive Windows data-exfiltration protection solution that combines network interception, memory analysis, and real-time process tracking. The project includes an elevated service and a feature-rich monitoring console.
 
-## بنية المشروع
+## Project layout
 
 ```
 AntiExfiltrationSystem.sln
 └── src/AntiExfiltrationSystem
     ├── Program.cs
-    ├── Core/            # محرك الكشف والتنسيق
-    ├── Detection/       # تحليل الحمولة ورد الفعل
-    ├── Infrastructure/  # كونسول العرض
-    ├── Memory/          # تحليل الذاكرة والهيب
-    ├── Networking/      # التقاط الحزم وإدارة البروكسي العكسي
-    ├── ProcessMonitoring/# تتبع العمليات والسياق
-    ├── ReverseProxy/    # اعتراض TLS في الزمن الحقيقي
-    ├── ThreatIntel/     # (مكان لتوسعة استخبارات التهديد)
-    └── Utilities/       # أدوات مشتركة
+    ├── Core/            # detection engines and orchestration
+    ├── Detection/       # payload analysis & responses
+    ├── Infrastructure/  # console UI and helpers
+    ├── Memory/          # memory & heap analysis
+    ├── Networking/      # packet capture and reverse proxy
+    ├── ProcessMonitoring/# process context and tracking
+    ├── ReverseProxy/    # real-time TLS interception
+    ├── ThreatIntel/     # threat intelligence integrations
+    └── Utilities/       # shared helpers
 ```
 
-## متطلبات النظام
+## System requirements
 
-- Windows 10/11 x64
-- صلاحيات Administrator/SYSTEM
-- .NET SDK 8.0 (مع دعم Windows)
-- منفذ حر للبروكسي العكسي (الافتراضي 8443)
+* Windows 10/11 x64
+* Administrator or SYSTEM privileges
+* .NET SDK 8.0 (Windows-supported)
+* Free port for the reverse-proxy (default: 8443)
 
-## الإعداد والتشغيل
+## Setup & run
 
-1. **استعادة الحزم**
-   ```powershell
-   dotnet restore AntiExfiltrationSystem.sln
-   ```
-2. **البناء**
-   ```powershell
-   dotnet build AntiExfiltrationSystem.sln -c Release
-   ```
-3. **النشر الذاتي (اختياري)**
-   ```powershell
-   dotnet publish src/AntiExfiltrationSystem/AntiExfiltrationSystem.csproj -c Release -r win-x64 --self-contained true
-   ```
-4. **التشغيل بامتيازات مرتفعة**
-   ```powershell
-   Start-Process "./bin/Release/net8.0-windows/AntiExfiltrationSystem.exe" -Verb RunAs
-   ```
+1. Restore packages
 
-## المزايا الرئيسية
+```powershell
+dotnet restore AntiExfiltrationSystem.sln
+```
 
-- اعتراض حقيقي لحزم الشبكة عبر مقابس RAW
-- بروكسي عكسي مع كسر TLS وإنشاء شهادات ديناميكية
-- تتبع عمليات فوري باستخدام WMI
-- تحليل ذاكرة متقدم مع استخراج سلاسل حساسة واكتشاف Hooks
-- تنسيق ردود تلقائي (تسجيل، تشويش، حجب، قتل العملية)
-- واجهة كونسول لحظية تعرض إحصاءات وتنبيهات
+2. Build (Release)
 
-## الأمان وأفضل الممارسات
+```powershell
+dotnet build AntiExfiltrationSystem.sln -c Release -f net8.0-windows
+```
 
-- يتم إنشاء سلطة جذر خاصة وتخزينها في مخزن الشهادات المحلي بأمان
-- جميع الاتصالات المريبة تؤدي إلى إعادة ضبط TCP أو إنهاء العملية حسب مستوى الخطر
-- يتم مسح البيانات الحساسة من الذاكرة العاملة أثناء المعالجة
-- يعتمد المشروع على تسجيل كامل للعمليات لضمان إمكانية التدقيق لاحقًا
+3. Publish (self-contained, optional)
 
-## الاختبارات
+```powershell
+dotnet publish src/AntiExfiltrationSystem/AntiExfiltrationSystem.csproj -c Release -r win-x64 -f net8.0-windows --self-contained true
+```
 
-- ينصح بتشغيل النظام في بيئة اختبار مع حركة مرور حقيقية للتحقق من الاعتراض
-- يمكن اختبار اكتشاف السلاسل الحساسة بحقن نصوص تضم كلمات مرور أو مفاتيح API داخل عمليات خبيثة
-- يوصى بإنشاء سيناريوهات تسريب (مثل رفع ملف بصيغة JSON يحتوي بيانات سرية) للتأكد من استجابة النظام
+4. Run elevated
 
-> **ملاحظة:** يجب تثبيت التطبيق على جهاز ويندوز فعلي أو VM. البيئة الحالية (Linux) مخصصة لتحرير الكود فقط.
+```powershell
+Start-Process "./bin/Release/net8.0-windows/AntiExfiltrationSystem.exe" -Verb RunAs
+```
+
+> If you built for another target framework, update the path accordingly.
+
+## Key features
+
+* True packet interception using raw sockets / platform capture drivers
+* Reverse proxy with TLS interception and dynamic certificate injection
+* Real-time process tracking (WMI / native APIs)
+* Advanced memory analysis and sensitive string extraction
+* Automated responses (log, obfuscate, block, terminate)
+* Live console UI with filtering and controls
+
+## Security & best practices
+
+* A private root CA is generated and securely stored in the local certificate store
+* Suspicious connections may be reset (TCP RST) or the originating process terminated
+* Sensitive data is zeroed in memory during processing
+* Full auditing and logging are maintained for post-event analysis
+
+## Testing guidance
+
+* Use a dedicated lab or VM with representative traffic for interception tests
+* Inject test payloads (passwords, API keys) into target processes to validate detection
+* Create leak scenarios (e.g. uploading JSON with secrets) to verify automated responses
+
+**Note:** Install and run on a Windows host or VM. The current environment is Linux and suitable only for code editing.

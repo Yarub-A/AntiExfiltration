@@ -24,14 +24,19 @@ public static class TlsHelloReader
                 return null;
             }
 
+            // نسخ البيانات المقروءة مسبقًا إلى مصفوفة منفصلة لتجنب مشاكل الـ Pool reuse
             var prefetch = new byte[bytesRead];
             Buffer.BlockCopy(buffer, 0, prefetch, 0, bytesRead);
+
+            // تحليل اسم الخادم من TLS ClientHello (Server Name Indication)
             var hostName = ParseServerName(prefetch.AsSpan());
             var preloaded = new PreloadedStream(prefetch, baseStream);
 
+            // الحصول على بيانات الاتصال لمعرفة العملية المسؤولة
             var remote = (IPEndPoint)client.Client.RemoteEndPoint!;
             var local = (IPEndPoint)client.Client.LocalEndPoint!;
             var processId = SocketProcessMapper.ResolveProcessId(remote, local);
+
             return new ClientHelloInfo(hostName, preloaded, processId, remote);
         }
         finally
@@ -43,57 +48,44 @@ public static class TlsHelloReader
     private static string? ParseServerName(ReadOnlySpan<byte> clientHello)
     {
         if (clientHello.Length < 5 || clientHello[0] != 0x16)
-        {
             return null;
-        }
 
         var pointer = 5 + 1 + 2 + 32;
         if (clientHello.Length < pointer + 1)
-        {
             return null;
-        }
 
         var sessionIdLength = clientHello[pointer];
         pointer += 1 + sessionIdLength;
         if (clientHello.Length < pointer + 2)
-        {
             return null;
-        }
 
         var cipherSuiteLength = (clientHello[pointer] << 8) + clientHello[pointer + 1];
         pointer += 2 + cipherSuiteLength;
         if (clientHello.Length < pointer + 1)
-        {
             return null;
-        }
 
         var compressionMethods = clientHello[pointer];
         pointer += 1 + compressionMethods;
         if (clientHello.Length < pointer + 2)
-        {
             return null;
-        }
 
         var extensionsLength = (clientHello[pointer] << 8) + clientHello[pointer + 1];
         pointer += 2;
         var end = pointer + extensionsLength;
         if (clientHello.Length < end)
-        {
             return null;
-        }
 
         while (pointer + 4 <= end)
         {
             var extensionType = (clientHello[pointer] << 8) + clientHello[pointer + 1];
             var extensionLength = (clientHello[pointer + 2] << 8) + clientHello[pointer + 3];
             pointer += 4;
-            if (extensionType == 0)
+
+            if (extensionType == 0) // SNI Extension
             {
                 var serverNameListLength = (clientHello[pointer] << 8) + clientHello[pointer + 1];
                 if (serverNameListLength <= 0)
-                {
                     break;
-                }
 
                 var serverNameType = clientHello[pointer + 2];
                 var hostLength = (clientHello[pointer + 3] << 8) + clientHello[pointer + 4];
@@ -116,18 +108,14 @@ public static class TlsHelloReader
         {
             var read = await stream.ReadAsync(buffer.AsMemory(offset, buffer.Length - offset), cancellationToken).ConfigureAwait(false);
             if (read == 0)
-            {
                 break;
-            }
 
             offset += read;
             if (offset >= 5)
             {
                 var length = (buffer[3] << 8) + buffer[4] + 5;
                 if (offset >= length)
-                {
                     return length;
-                }
             }
         }
 
@@ -183,20 +171,20 @@ internal sealed class PreloadedStream : Stream
 
     public override void Write(byte[] buffer, int offset, int count) => _inner.Write(buffer, offset, count);
 
-    public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => _inner.WriteAsync(buffer, offset, count, cancellationToken);
+    public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+        _inner.WriteAsync(buffer, offset, count, cancellationToken);
 
-    public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) => _inner.WriteAsync(buffer, cancellationToken);
+    public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
+        _inner.WriteAsync(buffer, cancellationToken);
 
     public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-
     public override void SetLength(long value) => throw new NotSupportedException();
 
     protected override void Dispose(bool disposing)
     {
         if (disposing)
-        {
             _inner.Dispose();
-        }
+
         base.Dispose(disposing);
     }
 }
