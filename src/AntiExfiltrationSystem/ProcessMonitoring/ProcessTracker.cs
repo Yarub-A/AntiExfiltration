@@ -108,7 +108,7 @@ public sealed class ProcessTracker
                 return new SignatureStatus { IsSigned = false, IsTrusted = false, Subject = "Unknown" };
             }
 
-            // Use X509Certificate + X509Certificate2 for broader compatibility
+            // تحميل شهادة التوقيع من الملف التنفيذي بطريقة متوافقة مع كافة الإصدارات
             var certificate = X509Certificate.CreateFromSignedFile(path);
             var signer = new X509Certificate2(certificate);
 
@@ -121,6 +121,7 @@ public sealed class ProcessTracker
                 }
             };
             var trusted = chain.Build(signer);
+
             return new SignatureStatus
             {
                 IsSigned = true,

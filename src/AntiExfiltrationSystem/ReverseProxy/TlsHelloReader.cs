@@ -22,15 +22,15 @@ public static class TlsHelloReader
             if (bytesRead <= 0)
                 return null;
 
-            // Copy prefetched TLS ClientHello bytes to a safe buffer
+            // نسخ البيانات المقروءة مسبقاً إلى مصفوفة منفصلة لتفادي مشاكل إعادة الاستخدام في ArrayPool
             var prefetch = new byte[bytesRead];
             Buffer.BlockCopy(buffer, 0, prefetch, 0, bytesRead);
 
-            // Parse SNI hostname
+            // تحليل اسم الخادم (SNI) من رسالة TLS ClientHello
             var hostName = ParseServerName(prefetch.AsSpan());
             var preloaded = new PreloadedStream(prefetch, baseStream);
 
-            // Map connection to originating process
+            // الحصول على بيانات الاتصال وتحديد العملية المالكة للاتصال
             var remote = (IPEndPoint)client.Client.RemoteEndPoint!;
             var local = (IPEndPoint)client.Client.LocalEndPoint!;
             var processId = SocketProcessMapper.ResolveProcessId(remote, local);
@@ -48,7 +48,7 @@ public static class TlsHelloReader
         if (clientHello.Length < 5 || clientHello[0] != 0x16)
             return null;
 
-        var pointer = 5 + 1 + 2 + 32;
+        var pointer = 5 + 1 + 2 + 32; // Skip record header, version, random
         if (clientHello.Length < pointer + 1)
             return null;
 
@@ -79,7 +79,7 @@ public static class TlsHelloReader
             var extensionLength = (clientHello[pointer + 2] << 8) + clientHello[pointer + 3];
             pointer += 4;
 
-            if (extensionType == 0) // SNI extension
+            if (extensionType == 0) // SNI Extension
             {
                 var serverNameListLength = (clientHello[pointer] << 8) + clientHello[pointer + 1];
                 if (serverNameListLength <= 0)

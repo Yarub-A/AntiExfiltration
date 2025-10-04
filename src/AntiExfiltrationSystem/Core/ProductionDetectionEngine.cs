@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Management;
+using System.Security;
 using AntiExfiltrationSystem.Detection;
 using AntiExfiltrationSystem.Memory;
 using AntiExfiltrationSystem.Networking;
@@ -43,12 +44,30 @@ public sealed class ProductionDetectionEngine : IAsyncDisposable
 
     private async Task StartNetworkInterceptionAsync(CancellationToken token)
     {
-        foreach (var adapter in NetworkAdapterManager.DetectAdapters())
+        var adapters = NetworkAdapterManager.DetectAdapters();
+        if (adapters.Count == 0)
         {
-            var interceptor = new ProductionPacketInterceptor(adapter);
-            interceptor.PacketCaptured += OnPacketCaptured;
-            await interceptor.StartAsync(token).ConfigureAwait(false);
-            _monitors.Add(interceptor);
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("⚠️  No IPv4-enabled adapters detected. Network interception disabled.");
+            Console.ResetColor();
+            return;
+        }
+
+        foreach (var adapter in adapters)
+        {
+            try
+            {
+                var interceptor = new ProductionPacketInterceptor(adapter);
+                interceptor.PacketCaptured += OnPacketCaptured;
+                await interceptor.StartAsync(token).ConfigureAwait(false);
+                _monitors.Add(interceptor);
+            }
+            catch (SecurityException ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"⚠️  Skipping adapter '{adapter.Name}': {ex.Message}");
+                Console.ResetColor();
+            }
         }
     }
 
