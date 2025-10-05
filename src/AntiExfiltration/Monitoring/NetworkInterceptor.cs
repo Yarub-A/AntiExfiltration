@@ -94,6 +94,11 @@ public sealed class NetworkInterceptor
                     continue;
                 }
 
+                if (refreshed.ProcessId <= 4)
+                {
+                    continue;
+                }
+
                 var score = _behaviorEngine.UpdateScore(refreshed.ProcessId, existing =>
                 {
                     var updated = existing;
@@ -180,10 +185,10 @@ internal sealed class PacketAnalyzer
         var indicators = new List<PacketIndicator>();
         var highlights = new List<string>();
 
-        if (entry.RemotePort == 443 && IPAddress.TryParse(entry.RemoteAddress, out var address) && address.GetAddressBytes()[0] >= 200)
+        if (_configuration.SuspiciousPorts?.Contains(entry.RemotePort) == true)
         {
-            indicators.Add(new PacketIndicator("unrecognized443", 3));
-            highlights.Add($"Port 443 to {entry.RemoteAddress}");
+            indicators.Add(new PacketIndicator($"remotePort:{entry.RemotePort}", 3));
+            highlights.Add($"Remote port {entry.RemotePort} is monitored");
         }
 
         if (_configuration.HighRiskHosts.Any(host => entry.RemoteAddress.Contains(host, StringComparison.OrdinalIgnoreCase)))
@@ -204,7 +209,7 @@ internal sealed class PacketAnalyzer
         var shouldBlock = indicators.Any(i => i.ScoreImpact >= 4);
         var preview = highlights.Count > 0
             ? string.Join("; ", highlights)
-            : $"Destination {entry.RemoteAddress}:{entry.RemotePort}";
+            : $"Connection to {entry.RemoteAddress}:{entry.RemotePort}";
 
         return new PacketAnalysisResult(indicators, shouldBlock, preview);
     }

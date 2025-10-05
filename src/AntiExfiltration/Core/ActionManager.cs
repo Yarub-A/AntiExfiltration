@@ -2,6 +2,7 @@ using AntiExfiltration.Infrastructure;
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Threading.Tasks;
 
 namespace AntiExfiltration.Core;
 
@@ -21,6 +22,11 @@ public sealed class ActionManager
 
     public void EvaluateAndRespond(int processId)
     {
+        if (IsProtectedProcess(processId))
+        {
+            return;
+        }
+
         var score = _behaviorEngine.GetScore(processId);
         switch (score.Level)
         {
@@ -43,6 +49,11 @@ public sealed class ActionManager
         try
         {
             using var process = Process.GetProcessById(processId);
+            if (IsProtectedProcess(process.Id))
+            {
+                return;
+            }
+
             foreach (ProcessThread thread in process.Threads)
             {
                 var handle = NativeMethods.OpenThread(NativeMethods.ThreadAccess.SUSPEND_RESUME, false, (uint)thread.Id);
@@ -51,8 +62,25 @@ public sealed class ActionManager
                     continue;
                 }
 
-                NativeMethods.SuspendThread(handle);
-                _ = Task.Delay(_configuration.ProcessSuspendDuration).ContinueWith(_ => NativeMethods.ResumeThread(handle));
+                var previousCount = NativeMethods.SuspendThread(handle);
+                if (previousCount == uint.MaxValue)
+                {
+                    NativeMethods.CloseHandle(handle);
+                    continue;
+                }
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(_configuration.ProcessSuspendDuration).ConfigureAwait(false);
+                        NativeMethods.ResumeThread(handle);
+                    }
+                    finally
+                    {
+                        NativeMethods.CloseHandle(handle);
+                    }
+                });
             }
 
             LogDecision(processId, "suspend");
@@ -68,6 +96,11 @@ public sealed class ActionManager
         try
         {
             using var process = Process.GetProcessById(processId);
+            if (IsProtectedProcess(process.Id))
+            {
+                return;
+            }
+
             process.Kill(entireProcessTree: true);
             LogDecision(processId, "terminate");
         }
@@ -79,6 +112,11 @@ public sealed class ActionManager
 
     public void BlockNetwork(int processId)
     {
+        if (IsProtectedProcess(processId))
+        {
+            return;
+        }
+
         _networkBlocks[processId] = DateTimeOffset.UtcNow.Add(_configuration.NetworkBlockDuration);
         LogDecision(processId, "networkBlocked");
     }
@@ -110,6 +148,16 @@ public sealed class ActionManager
         });
     }
 
+    private bool IsProtectedProcess(int processId)
+    {
+        if (processId <= 4 || processId == Environment.ProcessId)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
     private static class NativeMethods
     {
         [Flags]
@@ -134,5 +182,9 @@ public sealed class ActionManager
 
         [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
         public static extern int ResumeThread(IntPtr hThread);
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        public static extern bool CloseHandle(IntPtr hObject);
     }
 }

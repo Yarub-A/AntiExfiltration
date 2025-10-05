@@ -2,9 +2,11 @@ using AntiExfiltration.Core;
 using AntiExfiltration.Infrastructure;
 using AntiExfiltration.Plugins;
 using AntiExfiltration.Security;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Management;
 using System.Runtime.Versioning;
@@ -20,6 +22,7 @@ public sealed class ProcessMonitor
     private readonly PluginManager _pluginManager;
     private readonly ProcessMonitoringConfiguration _configuration;
     private readonly ConcurrentDictionary<int, ProcessMetadata> _processes = new();
+    private readonly HashSet<string> _allowListedNames;
 
     public ProcessMonitor(
         SecureLogger logger,
@@ -33,6 +36,9 @@ public sealed class ProcessMonitor
         _actionManager = actionManager;
         _pluginManager = pluginManager;
         _configuration = configuration;
+        _allowListedNames = (configuration.AllowListedProcesses ?? Array.Empty<string>())
+            .Select(p => Path.GetFileNameWithoutExtension(p).ToLowerInvariant())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     public async Task RunAsync(CancellationToken token)
@@ -64,7 +70,14 @@ public sealed class ProcessMonitor
             {
                 foreach (var process in Process.GetProcesses())
                 {
-                    AnalyseProcess(process.Id);
+                    try
+                    {
+                        AnalyseProcess(process.Id);
+                    }
+                    finally
+                    {
+                        process.Dispose();
+                    }
                 }
 
                 await Task.Delay(_configuration.ScanInterval, token).ConfigureAwait(false);
@@ -79,6 +92,11 @@ public sealed class ProcessMonitor
 
     private void AnalyseProcess(int processId)
     {
+        if (processId <= 4)
+        {
+            return;
+        }
+
         try
         {
             using var process = Process.GetProcessById(processId);
@@ -118,6 +136,11 @@ public sealed class ProcessMonitor
 
     private void EvaluateIndicators(ProcessMetadata metadata)
     {
+        if (IsAllowListed(metadata.Name))
+        {
+            return;
+        }
+
         var indicators = new List<(string indicator, int weight)>();
 
         if (!metadata.IsSigned && metadata.ExecutiveDirectorySuspicious())
@@ -175,6 +198,9 @@ public sealed class ProcessMonitor
     }
 
     public IReadOnlyCollection<ProcessMetadata> SnapshotProcesses() => _processes.Values.ToList();
+
+    private bool IsAllowListed(string processName)
+        => _allowListedNames.Contains(processName);
 
     private static string QueryCommandLine(int processId)
     {

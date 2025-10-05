@@ -38,7 +38,7 @@ Run the decoder with the same Windows account that executed the agent so DPAPI c
 - **ApiHookManager**: Observes allow-listed applications and records loaded modules.
 - **IntegrityChecker**: Verifies protected binaries and configuration files.
 - **PluginManager**: Loads custom detection plugins from the `plugins` directory.
-- **ConsoleUi**: Command-driven dashboard for switching interfaces, listing telemetry, and triggering checks.
+- **ConsoleUi**: Command-driven dashboard (commands such as `switch <name>`, `list`, `integrity`, `refresh`, `exit`) with automatic refresh and command history snippets.
 - **LogDecoder**: Command-line utility that decrypts log files using the stored DPAPI-protected key.
 
 ## Security Notes

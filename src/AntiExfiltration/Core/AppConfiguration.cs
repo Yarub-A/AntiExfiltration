@@ -103,6 +103,7 @@ public sealed record NetworkConfiguration
         "discord.com",
         "cloudflare-dns.com"
     };
+    public int[] SuspiciousPorts { get; init; } = new[] { 21, 22, 23, 445, 3389 };
 };
 
 public sealed record ApiHookConfiguration

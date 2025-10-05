@@ -3,9 +3,12 @@ using AntiExfiltration.Infrastructure;
 using AntiExfiltration.Monitoring;
 using AntiExfiltration.Plugins;
 using AntiExfiltration.Security;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net.NetworkInformation;
 using System.Runtime.Versioning;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace AntiExfiltration.UI;
 
@@ -15,6 +18,8 @@ public sealed class ConsoleUi
     private readonly SecureLogger _logger;
     private readonly UiConfiguration _configuration;
     private readonly UiContext _context;
+    private readonly LinkedList<string> _notifications = new();
+    private readonly object _notificationLock = new();
 
     public ConsoleUi(SecureLogger logger, UiConfiguration configuration, UiContext context)
     {
@@ -28,35 +33,38 @@ public sealed class ConsoleUi
 
     private void RunLoop(CancellationToken token)
     {
-        Console.WriteLine("=== AntiExfiltration Defender ===");
-        Console.WriteLine("Type 'help' to list commands. Press Enter to refresh the dashboard.");
-        Console.WriteLine($"Configured snapshot interval: {_configuration.RefreshInterval.TotalSeconds:0.#}s");
+        var nextRefresh = DateTimeOffset.MinValue;
 
         while (!token.IsCancellationRequested)
         {
-            RenderDashboard();
-            PrintMenu();
-
-            Console.Write("> ");
-            var input = Console.ReadLine();
-            if (input is null)
+            if (DateTimeOffset.UtcNow >= nextRefresh)
             {
-                break;
+                RenderDashboard();
+                PrintMenu();
+                Console.Write("> ");
+                nextRefresh = DateTimeOffset.UtcNow + _configuration.RefreshInterval;
             }
 
-            input = input.Trim();
-
-            if (token.IsCancellationRequested)
+            if (Console.KeyAvailable)
             {
-                break;
-            }
+                var input = Console.ReadLine();
+                if (input is null)
+                {
+                    break;
+                }
 
-            if (string.IsNullOrEmpty(input))
+                input = input.Trim();
+                if (!string.IsNullOrEmpty(input))
+                {
+                    HandleCommand(input);
+                }
+
+                nextRefresh = DateTimeOffset.MinValue;
+            }
+            else
             {
-                continue;
+                Thread.Sleep(100);
             }
-
-            HandleCommand(input);
         }
     }
 
@@ -69,25 +77,41 @@ public sealed class ConsoleUi
             command = input
         });
 
-        switch (input.ToLowerInvariant())
+        var responses = ExecuteCommand(input);
+        foreach (var message in responses)
+        {
+            AddNotification(message);
+        }
+    }
+
+    private IEnumerable<string> ExecuteCommand(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            yield break;
+        }
+
+        var parts = input.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+        var command = parts[0].ToLowerInvariant();
+        var argument = parts.Length > 1 ? parts[1].Trim() : null;
+
+        switch (command)
         {
             case "1":
             case "switch":
-                Console.Write("Interface name: ");
-                var name = Console.ReadLine();
-                if (string.IsNullOrWhiteSpace(name))
+                if (string.IsNullOrWhiteSpace(argument))
                 {
-                    Console.WriteLine("No interface name was provided.");
-                    break;
+                    yield return "Usage: switch <interface name>.";
+                    yield break;
                 }
 
-                if (_context.NetworkInterceptor.SwitchInterface(name.Trim()))
+                if (_context.NetworkInterceptor.SwitchInterface(argument))
                 {
-                    Console.WriteLine($"Switched to interface '{name.Trim()}'.");
+                    yield return $"Switched to interface '{argument}'.";
                 }
                 else
                 {
-                    Console.WriteLine($"Interface '{name.Trim()}' was not found.");
+                    yield return $"Interface '{argument}' was not found.";
                 }
 
                 break;
@@ -95,32 +119,54 @@ public sealed class ConsoleUi
             case "list":
                 foreach (var iface in NetworkInterface.GetAllNetworkInterfaces())
                 {
-                    Console.WriteLine($"- {iface.Name} ({iface.NetworkInterfaceType}, {iface.OperationalStatus})");
+                    yield return $"Interface {iface.Name} ({iface.NetworkInterfaceType}, {iface.OperationalStatus}).";
                 }
 
                 break;
             case "3":
             case "integrity":
                 _ = _context.IntegrityChecker.VerifyAsync(CancellationToken.None);
-                Console.WriteLine("Integrity verification scheduled.");
+                yield return "Integrity verification scheduled.";
                 break;
             case "4":
             case "refresh":
             case "help":
-                // Refresh handled by the next loop iteration.
+                yield return "Dashboard refresh requested.";
                 break;
             case "5":
             case "exit":
+                yield return "Exiting application.";
                 Environment.Exit(0);
                 break;
             default:
-                Console.WriteLine("Unknown command. Type 'help' to list available options.");
+                yield return "Unknown command. Use: switch <name>, list, integrity, refresh, help, or exit.";
                 break;
+        }
+    }
+
+    private void AddNotification(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        lock (_notificationLock)
+        {
+            _notifications.AddFirst($"{DateTimeOffset.Now:HH:mm:ss} {message}");
+            while (_notifications.Count > 6)
+            {
+                _notifications.RemoveLast();
+            }
         }
     }
 
     private void RenderDashboard()
     {
+        Console.Clear();
+        Console.WriteLine("=== AntiExfiltration Defender ===");
+        Console.WriteLine($"Auto-refresh interval: {_configuration.RefreshInterval.TotalSeconds:0.#} seconds");
+        Console.WriteLine("Submit commands using English keywords, for example 'switch Wi-Fi'.");
         Console.WriteLine();
         Console.WriteLine($"--- Snapshot {DateTimeOffset.Now:HH:mm:ss} ---");
         Console.WriteLine($"Active interface: {_context.NetworkInterceptor.ActiveInterface?.Name ?? "N/A"}");
@@ -129,6 +175,7 @@ public sealed class ConsoleUi
         RenderProcessSummary();
         RenderConnectionSummary();
         RenderHookSummary();
+        RenderNotifications();
     }
 
     private void RenderProcessSummary()
@@ -201,9 +248,33 @@ public sealed class ConsoleUi
         Console.WriteLine();
     }
 
+    private void RenderNotifications()
+    {
+        Console.WriteLine("Recent commands:");
+        List<string> snapshot;
+        lock (_notificationLock)
+        {
+            snapshot = _notifications.ToList();
+        }
+
+        if (snapshot.Count == 0)
+        {
+            Console.WriteLine("  No commands executed yet.");
+        }
+        else
+        {
+            foreach (var note in snapshot)
+            {
+                Console.WriteLine($"  {note}");
+            }
+        }
+
+        Console.WriteLine();
+    }
+
     private void PrintMenu()
     {
-        Console.WriteLine("Commands: [1] switch  [2] list  [3] integrity  [4] refresh  [5] exit");
+        Console.WriteLine("Commands: switch <name> | list | integrity | refresh | help | exit");
     }
 }
 
