@@ -7,6 +7,8 @@ namespace AntiExfiltration.Infrastructure;
 
 public sealed class SecureLogger : IDisposable
 {
+    private const string KeyFileName = "log.key";
+
     private readonly string _logDirectory;
     private readonly byte[] _encryptionKey;
     private readonly ConcurrentQueue<string> _queue = new();
@@ -75,10 +77,61 @@ public sealed class SecureLogger : IDisposable
 
     private static byte[] DeriveKey()
     {
-        var entropy = Encoding.UTF8.GetBytes("AntiExfiltrationLogKey");
-        var keyMaterial = ProtectedData.Protect(entropy, null, DataProtectionScope.CurrentUser);
-        using var sha256 = SHA256.Create();
-        return sha256.ComputeHash(keyMaterial);
+        var keyPath = Path.Combine(_logDirectory, KeyFileName);
+
+        try
+        {
+            var protectedBytes = LoadOrCreateProtectedKey(keyPath);
+            var unprotected = ProtectedData.Unprotect(protectedBytes, null, DataProtectionScope.CurrentUser);
+
+            if (unprotected.Length == 32)
+            {
+                return unprotected;
+            }
+
+            using var sha256 = SHA256.Create();
+            return sha256.ComputeHash(unprotected);
+        }
+        catch
+        {
+            var recovery = RandomNumberGenerator.GetBytes(32);
+            var protectedRecovery = ProtectedData.Protect(recovery, null, DataProtectionScope.CurrentUser);
+            try
+            {
+                File.WriteAllBytes(keyPath, protectedRecovery);
+            }
+            catch
+            {
+                // ignore write failures; fall back to in-memory key only
+            }
+
+            return recovery;
+        }
+    }
+
+    private static byte[] LoadOrCreateProtectedKey(string path)
+    {
+        if (File.Exists(path))
+        {
+            return File.ReadAllBytes(path);
+        }
+
+        var keyMaterial = RandomNumberGenerator.GetBytes(32);
+        var protectedKey = ProtectedData.Protect(keyMaterial, null, DataProtectionScope.CurrentUser);
+
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllBytes(path, protectedKey);
+
+        try
+        {
+            File.SetAttributes(path, File.GetAttributes(path) | FileAttributes.Hidden);
+        }
+        catch
+        {
+            // best effort; ignore attribute failures
+        }
+
+        return protectedKey;
     }
 
     public void Dispose()
