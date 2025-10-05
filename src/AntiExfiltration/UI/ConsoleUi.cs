@@ -39,11 +39,41 @@ public sealed class ConsoleUi
         Console.WriteLine($"Interface: {_context.NetworkInterceptor.ActiveInterface?.Name ?? "N/A"}");
         Console.WriteLine();
 
-        Console.WriteLine("[Active Processes]");
-        foreach (var process in _context.ProcessMonitor.SnapshotProcesses().OrderBy(p => p.ProcessId).Take(10))
+        Console.WriteLine("[أعلى العمليات حسب المخاطر]");
+        var processes = _context.ProcessMonitor.SnapshotProcesses();
+        var ranked = processes
+            .Select(p => (Process: p, Score: _context.BehaviorEngine.GetScore(p.ProcessId)))
+            .OrderByDescending(tuple => tuple.Score.Total)
+            .ThenBy(tuple => tuple.Process.ProcessId)
+            .Take(10)
+            .ToList();
+
+        if (ranked.Count == 0)
         {
-            var score = _context.BehaviorEngine.GetScore(process.ProcessId);
-            Console.WriteLine($"PID {process.ProcessId} {process.Name} Score: {score.Total} Level: {score.Level}");
+            Console.WriteLine("لا توجد بيانات عمليات بعد.");
+        }
+        else
+        {
+            foreach (var entry in ranked)
+            {
+                Console.WriteLine($"PID {entry.Process.ProcessId,-6} {entry.Process.Name,-20} مجموع {entry.Score.Total,3} مستوى {entry.Score.Level}");
+            }
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("[الاتصالات الصادرة الحديثة]");
+        var connections = _context.NetworkInterceptor.SnapshotConnections();
+        if (connections.Count == 0)
+        {
+            Console.WriteLine("لا توجد اتصالات قيد المراقبة.");
+        }
+        else
+        {
+            foreach (var connection in connections.Take(10))
+            {
+                Console.WriteLine(
+                    $"PID {connection.ProcessId,-6} {connection.LocalAddress}:{connection.LocalPort} -> {connection.RemoteAddress}:{connection.RemotePort} (آخر ظهور {connection.LastObserved:HH:mm:ss})");
+            }
         }
 
         Console.WriteLine();

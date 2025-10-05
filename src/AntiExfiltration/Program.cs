@@ -13,6 +13,22 @@ public static class Program
 {
     public static async Task Main(string[] args)
     {
+        var configuration = AppConfiguration.Load();
+
+        if (args.Length > 0 && args[0].Equals("--decode-log", StringComparison.OrdinalIgnoreCase))
+        {
+            var candidate = args.Length > 1 ? args[1] : null;
+            var logPath = ResolveLogPath(configuration.LoggingDirectory, candidate);
+            if (logPath is null)
+            {
+                Console.Error.WriteLine("لم يتم العثور على ملفات سجل لفكّها.");
+                return;
+            }
+
+            Environment.ExitCode = LogDecoder.DecodeToConsole(logPath);
+            return;
+        }
+
         using var cts = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) =>
         {
@@ -20,7 +36,6 @@ public static class Program
             cts.Cancel();
         };
 
-        var configuration = AppConfiguration.Load();
         using var logger = new SecureLogger(configuration.LoggingDirectory);
         var behaviorEngine = new BehaviorEngine(logger, configuration.Behavior);
         var certificateManager = new CertificateManager(logger, configuration.Certificate);
@@ -58,5 +73,23 @@ public static class Program
         };
 
         await Task.WhenAll(tasks).ConfigureAwait(false);
+    }
+
+    private static string? ResolveLogPath(string loggingDirectory, string? candidate)
+    {
+        if (!string.IsNullOrWhiteSpace(candidate))
+        {
+            return candidate;
+        }
+
+        if (!Directory.Exists(loggingDirectory))
+        {
+            return null;
+        }
+
+        return Directory
+            .EnumerateFiles(loggingDirectory, "log-*.bin", SearchOption.TopDirectoryOnly)
+            .OrderByDescending(File.GetLastWriteTimeUtc)
+            .FirstOrDefault();
     }
 }

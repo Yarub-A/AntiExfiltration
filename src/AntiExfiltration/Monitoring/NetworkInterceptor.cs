@@ -1,7 +1,7 @@
 using AntiExfiltration.Core;
 using AntiExfiltration.Infrastructure;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
@@ -19,6 +19,7 @@ public sealed class NetworkInterceptor
     private readonly ActionManager _actionManager;
     private readonly NetworkConfiguration _configuration;
     private readonly PacketAnalyzer _packetAnalyzer;
+    private readonly ConcurrentDictionary<string, TcpRow> _connections = new(StringComparer.OrdinalIgnoreCase);
     private NetworkInterface? _activeInterface;
 
     public NetworkInterceptor(
@@ -48,6 +49,7 @@ public sealed class NetworkInterceptor
         while (!token.IsCancellationRequested)
         {
             var entries = TcpTableReader.GetAllTcpConnections();
+            var observedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var entry in entries)
             {
                 if (_actionManager.IsNetworkBlocked(entry.ProcessId))
@@ -55,13 +57,18 @@ public sealed class NetworkInterceptor
                     continue;
                 }
 
-                var analysis = _packetAnalyzer.Analyze(entry);
+                var refreshed = entry with { LastObserved = DateTimeOffset.UtcNow };
+                var key = BuildConnectionKey(refreshed);
+                observedKeys.Add(key);
+                _connections[key] = refreshed;
+
+                var analysis = _packetAnalyzer.Analyze(refreshed);
                 if (analysis.Indicators.Count == 0)
                 {
                     continue;
                 }
 
-                var score = _behaviorEngine.UpdateScore(entry.ProcessId, existing =>
+                var score = _behaviorEngine.UpdateScore(refreshed.ProcessId, existing =>
                 {
                     var updated = existing;
                     foreach (var indicator in analysis.Indicators)
@@ -72,25 +79,33 @@ public sealed class NetworkInterceptor
                     return updated;
                 });
 
-                _actionManager.EvaluateAndRespond(entry.ProcessId);
+                _actionManager.EvaluateAndRespond(refreshed.ProcessId);
 
                 if (analysis.ShouldBlock)
                 {
-                    _actionManager.BlockNetwork(entry.ProcessId);
+                    _actionManager.BlockNetwork(refreshed.ProcessId);
                 }
 
                 _logger.Log(new
                 {
                     timestamp = DateTimeOffset.UtcNow,
                     eventType = "networkIndicators",
-                    entry.ProcessId,
-                    entry.LocalAddress,
-                    entry.RemoteAddress,
-                    entry.RemotePort,
+                    refreshed.ProcessId,
+                    refreshed.LocalAddress,
+                    refreshed.RemoteAddress,
+                    refreshed.RemotePort,
                     indicators = analysis.Indicators.Select(i => new { i.Description, i.ScoreImpact }),
                     score.Total,
                     score.Level
                 });
+            }
+
+            foreach (var key in _connections.Keys.ToArray())
+            {
+                if (!observedKeys.Contains(key))
+                {
+                    _connections.TryRemove(key, out _);
+                }
             }
 
             await Task.Delay(_configuration.ScanInterval, token).ConfigureAwait(false);
@@ -105,6 +120,15 @@ public sealed class NetworkInterceptor
             .ThenBy(n => n.Name.StartsWith(_configuration.PrimaryInterfacePreference, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
             .FirstOrDefault();
     }
+
+    public IReadOnlyList<TcpRow> SnapshotConnections()
+        => _connections.Values
+            .OrderByDescending(c => c.LastObserved)
+            .Take(25)
+            .ToList();
+
+    private static string BuildConnectionKey(TcpRow row)
+        => $"{row.ProcessId}:{row.LocalAddress}:{row.LocalPort}:{row.RemoteAddress}:{row.RemotePort}";
 }
 
 internal sealed class PacketAnalyzer
@@ -238,24 +262,10 @@ internal sealed class TcpTableReader
     }
 }
 
-public sealed class TcpRow
+public sealed record TcpRow(int ProcessId, string LocalAddress, int LocalPort, string RemoteAddress, int RemotePort)
 {
-    private TcpRow(int processId, string localAddress, int localPort, string remoteAddress, int remotePort)
-    {
-        ProcessId = processId;
-        LocalAddress = localAddress;
-        LocalPort = localPort;
-        RemoteAddress = remoteAddress;
-        RemotePort = remotePort;
-        PayloadSnapshot = string.Empty;
-    }
-
-    public int ProcessId { get; }
-    public string LocalAddress { get; }
-    public int LocalPort { get; }
-    public string RemoteAddress { get; }
-    public int RemotePort { get; }
-    public string PayloadSnapshot { get; init; }
+    public DateTimeOffset LastObserved { get; init; } = DateTimeOffset.UtcNow;
+    public string PayloadSnapshot { get; init; } = string.Empty;
 
     internal static TcpRow FromNative(TcpTableReader.NativeMethods.MIB_TCPROW_OWNER_PID row)
     {
@@ -264,6 +274,9 @@ public sealed class TcpRow
         var localPort = (row.dwLocalPort[0] << 8) + row.dwLocalPort[1];
         var remoteAddress = new IPAddress(row.dwRemoteAddr).ToString();
         var remotePort = (row.dwRemotePort[0] << 8) + row.dwRemotePort[1];
-        return new TcpRow(processId, localAddress, localPort, remoteAddress, remotePort);
+        return new TcpRow(processId, localAddress, localPort, remoteAddress, remotePort)
+        {
+            LastObserved = DateTimeOffset.UtcNow
+        };
     }
 }

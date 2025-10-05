@@ -37,22 +37,43 @@ public sealed class ProcessMonitor
 
     public async Task RunAsync(CancellationToken token)
     {
-        using var creationWatcher = new ManagementEventWatcher(new WqlEventQuery("SELECT * FROM Win32_ProcessStartTrace"));
-        creationWatcher.EventArrived += (_, args) =>
+        ManagementEventWatcher? creationWatcher = null;
+        try
         {
-            var pid = Convert.ToInt32(args.NewEvent.Properties["ProcessID"].Value);
-            AnalyseProcess(pid);
-        };
-        creationWatcher.Start();
-
-        while (!token.IsCancellationRequested)
-        {
-            foreach (var process in Process.GetProcesses())
+            creationWatcher = new ManagementEventWatcher(new WqlEventQuery("SELECT * FROM Win32_ProcessStartTrace"));
+            creationWatcher.EventArrived += (_, args) =>
             {
-                AnalyseProcess(process.Id);
-            }
+                var pid = Convert.ToInt32(args.NewEvent.Properties["ProcessID"].Value);
+                AnalyseProcess(pid);
+            };
+            creationWatcher.Start();
+        }
+        catch (ManagementException ex)
+        {
+            _logger.Log(new
+            {
+                timestamp = DateTimeOffset.UtcNow,
+                eventType = "processWatcherDisabled",
+                error = ex.Message
+            });
+        }
 
-            await Task.Delay(_configuration.ScanInterval, token).ConfigureAwait(false);
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                foreach (var process in Process.GetProcesses())
+                {
+                    AnalyseProcess(process.Id);
+                }
+
+                await Task.Delay(_configuration.ScanInterval, token).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            creationWatcher?.Stop();
+            creationWatcher?.Dispose();
         }
     }
 

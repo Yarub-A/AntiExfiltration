@@ -18,6 +18,17 @@
    ```
 4. ستنشأ تلقائيًا شهادة جذر محلية وسجل إعدادات `config.json` وأدلة `logs` و`plugins`.
 
+### فك السجلات المشفّرة
+- لاستخراج أحدث السجلات كنص JSON مقروء:
+  ```powershell
+  dotnet run --project src/AntiExfiltration/AntiExfiltration.csproj -c Release -- --decode-log
+  ```
+- أو مرّر مسار ملف محدد:
+  ```powershell
+  dotnet run --project src/AntiExfiltration/AntiExfiltration.csproj -c Release -- --decode-log "C:\\مسار\\log-20251005.bin"
+  ```
+- يجب تنفيذ الأوامر بحساب Windows نفسه الذي شغّل التطبيق لضمان نجاح DPAPI.
+
 ## المكوّنات الرئيسة
 - **SecureLogger**: تسجيل JSON مشفر باستخدام AES-256.
 - **BehaviorEngine**: حساب درجات المخاطر للعمليات.
@@ -28,6 +39,7 @@
 - **IntegrityChecker**: التحقق من سلامة الملفات الحرجة.
 - **PluginManager**: تحميل إضافات الكشف الديناميكية.
 - **ConsoleUi**: لوحة عرض فورية مع خيارات إدارية.
+- **LogDecoder**: أداة سطر أوامر لفك السجلات المشفرة باستخدام DPAPI وAES.
 
 ## ملاحظات أمنية
 - جميع السجلات تُخزَّن محليًا فقط.
