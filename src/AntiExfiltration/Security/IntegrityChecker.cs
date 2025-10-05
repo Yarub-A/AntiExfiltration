@@ -1,4 +1,6 @@
+using AntiExfiltration.Core;
 using AntiExfiltration.Infrastructure;
+using System.Linq;
 using System.Security.Cryptography;
 
 namespace AntiExfiltration.Security;

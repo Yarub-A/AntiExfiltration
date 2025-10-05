@@ -7,4 +7,7 @@
     <RootNamespace>AntiExfiltration</RootNamespace>
     <AssemblyName>AntiExfiltration</AssemblyName>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Management" Version="7.0.2" />
+  </ItemGroup>
 </Project>
