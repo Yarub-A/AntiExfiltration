@@ -75,7 +75,7 @@ public sealed class SecureLogger : IDisposable
         return result;
     }
 
-    private static byte[] DeriveKey()
+    private byte[] DeriveKey()
     {
         var keyPath = Path.Combine(_logDirectory, KeyFileName);
 
