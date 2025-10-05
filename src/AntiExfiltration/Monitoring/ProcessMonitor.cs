@@ -5,6 +5,7 @@ using AntiExfiltration.Security;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -104,7 +105,7 @@ public sealed class ProcessMonitor
             _processes[processId] = metadata;
             EvaluateIndicators(metadata);
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or Win32Exception)
         {
             // process terminated
             _processes.TryRemove(processId, out _);

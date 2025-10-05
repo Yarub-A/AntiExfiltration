@@ -20,6 +20,12 @@ public sealed class BehaviorEngine
 
     public BehaviorScore UpdateScore(int processId, Func<BehaviorScore, BehaviorScore> update)
     {
+        if (IsExcludedProcess(processId))
+        {
+            _scores.TryRemove(processId, out _);
+            return new BehaviorScore(processId);
+        }
+
         var score = _scores.AddOrUpdate(processId, pid => update(new BehaviorScore(pid)), (pid, existing) => update(existing));
         _logger.Log(new
         {
@@ -31,6 +37,9 @@ public sealed class BehaviorEngine
         });
         return score;
     }
+
+    private static bool IsExcludedProcess(int processId)
+        => processId <= 4 || processId == Environment.ProcessId;
 
     public BehaviorScore GetScore(int processId)
         => _scores.TryGetValue(processId, out var score) ? score : new BehaviorScore(processId);

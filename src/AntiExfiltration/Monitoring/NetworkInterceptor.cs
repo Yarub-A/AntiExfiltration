@@ -69,6 +69,11 @@ public sealed class NetworkInterceptor
             var observedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var entry in entries)
             {
+                if (entry.ProcessId <= 4 || entry.ProcessId == Environment.ProcessId)
+                {
+                    continue;
+                }
+
                 if (_actionManager.IsNetworkBlocked(entry.ProcessId))
                 {
                     continue;
@@ -135,6 +140,13 @@ public sealed class NetworkInterceptor
             foreach (var key in _connections.Keys.ToArray())
             {
                 if (!observedKeys.Contains(key))
+                {
+                    _connections.TryRemove(key, out _);
+                    continue;
+                }
+
+                if (_connections.TryGetValue(key, out var cached)
+                    && (cached.ProcessId <= 4 || cached.ProcessId == Environment.ProcessId))
                 {
                     _connections.TryRemove(key, out _);
                 }

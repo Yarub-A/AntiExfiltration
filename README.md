@@ -38,6 +38,18 @@ Run the decoder with the same Windows account that executed the agent so DPAPI c
 - **ApiHookManager**: Observes allow-listed applications and records loaded modules.
 - **IntegrityChecker**: Verifies protected binaries and configuration files.
 - **PluginManager**: Loads custom detection plugins from the `plugins` directory.
+
+## Configuration highlights
+`config.json` is generated on first launch and can be tuned without recompiling. Notable options:
+
+- `defense.actionCooldown`: Minimum time between repeated actions targeting the same process. Defaults to 15 seconds to prevent repeated suspends/terminations from overwhelming the system.
+- `defense.maxConcurrentTerminates`: Caps simultaneous termination attempts. Lower this value if you observe CPU pressure when many risky processes appear at once.
+- `defense.terminateFailureBackoff`: Cooldown applied when termination fails (for example due to access being denied).
+- `apiHooks.maxNewHooksPerSweep`: Limits how many new processes are instrumented per polling cycle to avoid mass module enumerations.
+- `apiHooks.rehookDelay` / `apiHooks.retryDelay`: Control how long a process stays on cooldown after a successful hook or a failed attempt.
+- `apiHooks.pollInterval`: Interval between successive scans of target applications.
+
+Adjust these values to balance responsiveness with system stability. Delete `config.json` to regenerate it with default values after upgrades.
 - **ConsoleUi**: Command-driven dashboard (commands such as `switch <name>`, `list`, `integrity`, `refresh`, `exit`) with automatic refresh and command history snippets.
 - **LogDecoder**: Command-line utility that decrypts log files using the stored DPAPI-protected key.
 

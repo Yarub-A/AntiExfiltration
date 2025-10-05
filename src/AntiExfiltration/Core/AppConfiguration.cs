@@ -78,6 +78,9 @@ public sealed record DefenseConfiguration
 {
     public TimeSpan ProcessSuspendDuration { get; init; } = TimeSpan.FromSeconds(30);
     public TimeSpan NetworkBlockDuration { get; init; } = TimeSpan.FromMinutes(5);
+    public TimeSpan ActionCooldown { get; init; } = TimeSpan.FromSeconds(15);
+    public int MaxConcurrentTerminates { get; init; } = 2;
+    public TimeSpan TerminateFailureBackoff { get; init; } = TimeSpan.FromMinutes(2);
 };
 
 public sealed record ProcessMonitoringConfiguration
@@ -109,6 +112,10 @@ public sealed record NetworkConfiguration
 public sealed record ApiHookConfiguration
 {
     public string[] TargetProcesses { get; init; } = new[] { "chrome.exe", "msedge.exe", "firefox.exe" };
+    public int MaxNewHooksPerSweep { get; init; } = 3;
+    public TimeSpan RehookDelay { get; init; } = TimeSpan.FromMinutes(10);
+    public TimeSpan RetryDelay { get; init; } = TimeSpan.FromMinutes(2);
+    public TimeSpan PollInterval { get; init; } = TimeSpan.FromSeconds(5);
 };
 
 public sealed record UiConfiguration
