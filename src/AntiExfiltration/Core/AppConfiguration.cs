@@ -1,3 +1,5 @@
+using System;
+using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -14,6 +16,7 @@ public sealed record AppConfiguration(
     MemoryScanningConfiguration MemoryScanning,
     NetworkConfiguration Network,
     ApiHookConfiguration ApiHooks,
+    LoadMonitoringConfiguration LoadMonitoring,
     UiConfiguration Ui)
 {
     private const string ConfigurationFile = "config.json";
@@ -29,9 +32,24 @@ public sealed record AppConfiguration(
         }
 
         var content = File.ReadAllText(ConfigurationFile);
-        return JsonSerializer.Deserialize<AppConfiguration>(content, JsonSerializerOptions)
-               ?? CreateDefaults();
+        var parsed = JsonSerializer.Deserialize<AppConfiguration>(content, JsonSerializerOptions);
+        return parsed is null ? CreateDefaults() : Normalize(parsed);
     }
+
+    private static AppConfiguration Normalize(AppConfiguration configuration)
+        => configuration with
+        {
+            Behavior = configuration.Behavior ?? new BehaviorConfiguration(),
+            Certificate = configuration.Certificate ?? new CertificateConfiguration(),
+            Integrity = configuration.Integrity ?? new IntegrityConfiguration(),
+            Defense = configuration.Defense ?? new DefenseConfiguration(),
+            ProcessMonitoring = configuration.ProcessMonitoring ?? new ProcessMonitoringConfiguration(),
+            MemoryScanning = configuration.MemoryScanning ?? new MemoryScanningConfiguration(),
+            Network = configuration.Network ?? new NetworkConfiguration(),
+            ApiHooks = configuration.ApiHooks ?? new ApiHookConfiguration(),
+            LoadMonitoring = configuration.LoadMonitoring ?? new LoadMonitoringConfiguration(),
+            Ui = configuration.Ui ?? new UiConfiguration()
+        };
 
     private static AppConfiguration CreateDefaults() => new(
         LoggingDirectory: Path.Combine(AppContext.BaseDirectory, "logs"),
@@ -44,6 +62,7 @@ public sealed record AppConfiguration(
         MemoryScanning: new MemoryScanningConfiguration(),
         Network: new NetworkConfiguration(),
         ApiHooks: new ApiHookConfiguration(),
+        LoadMonitoring: new LoadMonitoringConfiguration(),
         Ui: new UiConfiguration());
 
     private static readonly JsonSerializerOptions JsonSerializerOptions = new()
@@ -118,7 +137,14 @@ public sealed record ApiHookConfiguration
     public TimeSpan PollInterval { get; init; } = TimeSpan.FromSeconds(5);
 };
 
+public sealed record LoadMonitoringConfiguration
+{
+    public TimeSpan SampleInterval { get; init; } = TimeSpan.FromSeconds(5);
+    public int HistorySize { get; init; } = 120;
+};
+
 public sealed record UiConfiguration
 {
     public TimeSpan RefreshInterval { get; init; } = TimeSpan.FromSeconds(1);
+    public string ReportsDirectory { get; init; } = Path.Combine(AppContext.BaseDirectory, "reports");
 };

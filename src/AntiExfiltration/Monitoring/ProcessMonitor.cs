@@ -200,6 +200,66 @@ public sealed class ProcessMonitor
 
     public IReadOnlyCollection<ProcessMetadata> SnapshotProcesses() => _processes.Values.ToList();
 
+    public IReadOnlyList<ProcessTreeNode> BuildProcessTree(int? rootProcessId = null)
+    {
+        var snapshot = _processes.Values.ToList();
+        if (snapshot.Count == 0)
+        {
+            return Array.Empty<ProcessTreeNode>();
+        }
+
+        var lookup = snapshot.ToLookup(p => p.ParentProcessId);
+        var index = snapshot.ToDictionary(p => p.ProcessId);
+        var visited = new HashSet<int>();
+
+        IEnumerable<ProcessTreeNode> EnumerateChildren(ProcessMetadata metadata)
+        {
+            if (!visited.Add(metadata.ProcessId))
+            {
+                yield break;
+            }
+
+            foreach (var child in lookup[metadata.ProcessId]
+                         .OrderBy(c => c.ProcessId))
+            {
+                yield return CreateNode(child);
+            }
+
+            visited.Remove(metadata.ProcessId);
+        }
+
+        ProcessTreeNode CreateNode(ProcessMetadata metadata)
+        {
+            var children = EnumerateChildren(metadata).ToList();
+            return new ProcessTreeNode
+            {
+                ProcessId = metadata.ProcessId,
+                ParentProcessId = metadata.ParentProcessId,
+                Name = metadata.Name,
+                ExecutablePath = metadata.ExecutablePath,
+                CommandLine = metadata.CommandLine,
+                IsSigned = metadata.IsSigned,
+                Children = children
+            };
+        }
+
+        List<ProcessTreeNode> roots;
+        if (rootProcessId.HasValue && index.TryGetValue(rootProcessId.Value, out var rootMetadata))
+        {
+            roots = new List<ProcessTreeNode> { CreateNode(rootMetadata) };
+        }
+        else
+        {
+            roots = snapshot
+                .Where(p => p.ParentProcessId <= 4 || !index.ContainsKey(p.ParentProcessId))
+                .OrderBy(p => p.ProcessId)
+                .Select(CreateNode)
+                .ToList();
+        }
+
+        return roots;
+    }
+
     private bool IsAllowListed(string processName)
         => _allowListedNames.Contains(processName);
 
@@ -242,6 +302,17 @@ public sealed class ProcessMonitor
         public string ExecutablePath { get; init; } = string.Empty;
         public string CommandLine { get; init; } = string.Empty;
         public bool IsSigned { get; init; }
+    }
+
+    public sealed record ProcessTreeNode
+    {
+        public int ProcessId { get; init; }
+        public int ParentProcessId { get; init; }
+        public string Name { get; init; } = string.Empty;
+        public string ExecutablePath { get; init; } = string.Empty;
+        public string CommandLine { get; init; } = string.Empty;
+        public bool IsSigned { get; init; }
+        public IReadOnlyList<ProcessTreeNode> Children { get; init; } = Array.Empty<ProcessTreeNode>();
     }
 }
 

@@ -46,6 +46,13 @@ public static class Program
         var memoryScanner = new MemoryScanner(logger, behaviorEngine, actionManager, configuration.MemoryScanning);
         var networkInterceptor = new NetworkInterceptor(logger, behaviorEngine, actionManager, configuration.Network);
         var apiHookManager = new ApiHookManager(logger, behaviorEngine, actionManager, configuration.ApiHooks);
+        await integrityChecker.VerifyAsync(cts.Token).ConfigureAwait(false);
+        certificateManager.Initialize();
+        await pluginManager.LoadAsync(cts.Token).ConfigureAwait(false);
+
+        using var monitoringHost = new MonitoringHost(logger);
+        var loadMonitor = new SystemLoadMonitor(logger, configuration.LoadMonitoring, () => networkInterceptor.ActiveInterface);
+
         var consoleUi = new ConsoleUi(logger, configuration.Ui, new()
         {
             NetworkInterceptor = networkInterceptor,
@@ -56,23 +63,23 @@ public static class Program
             BehaviorEngine = behaviorEngine,
             ActionManager = actionManager,
             CertificateManager = certificateManager,
-            IntegrityChecker = integrityChecker
+            IntegrityChecker = integrityChecker,
+            MonitoringHost = monitoringHost,
+            LoadMonitor = loadMonitor,
+            LogDirectory = configuration.LoggingDirectory
         });
 
-        await integrityChecker.VerifyAsync(cts.Token).ConfigureAwait(false);
-        certificateManager.Initialize();
-        await pluginManager.LoadAsync(cts.Token).ConfigureAwait(false);
+        monitoringHost.Register("process-monitor", processMonitor.RunAsync);
+        monitoringHost.Register("memory-scanner", memoryScanner.RunAsync);
+        monitoringHost.Register("network-interceptor", networkInterceptor.RunAsync);
+        monitoringHost.Register("api-hook-manager", apiHookManager.RunAsync);
+        monitoringHost.Register("system-load", loadMonitor.RunAsync);
 
-        var tasks = new List<Task>
-        {
-            processMonitor.RunAsync(cts.Token),
-            memoryScanner.RunAsync(cts.Token),
-            networkInterceptor.RunAsync(cts.Token),
-            apiHookManager.RunAsync(cts.Token),
-            consoleUi.RunAsync(cts.Token)
-        };
+        monitoringHost.Start();
 
-        await Task.WhenAll(tasks).ConfigureAwait(false);
+        var uiTask = consoleUi.RunAsync(cts.Token);
+        await uiTask.ConfigureAwait(false);
+        await monitoringHost.StopAsync().ConfigureAwait(false);
     }
 
     private static string? ResolveLogPath(string loggingDirectory, string? candidate)
