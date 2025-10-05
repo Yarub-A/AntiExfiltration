@@ -3,8 +3,10 @@ using AntiExfiltration.Infrastructure;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using Microsoft.Win32.SafeHandles;
 
 namespace AntiExfiltration.Monitoring;
 
@@ -33,17 +35,76 @@ public sealed class MemoryScanner
     {
         while (!token.IsCancellationRequested)
         {
-            foreach (var process in Process.GetProcesses())
+            var candidates = SelectProcessesForScan();
+
+            foreach (var processId in candidates)
             {
-                ScanProcess(process);
+                ScanProcess(processId);
             }
 
             await Task.Delay(_configuration.ScanInterval, token).ConfigureAwait(false);
         }
     }
 
-    private void ScanProcess(Process process)
+    private IReadOnlyList<int> SelectProcessesForScan()
     {
+        var candidates = new List<int>();
+        foreach (var process in Process.GetProcesses())
+        {
+            try
+            {
+                using (process)
+                {
+                    if (!ShouldInspect(process))
+                    {
+                        continue;
+                    }
+
+                    candidates.Add(process.Id);
+                }
+            }
+            catch
+            {
+                // ignore inaccessible processes
+            }
+        }
+
+        return candidates
+            .OrderByDescending(pid => _behaviorEngine.GetScore(pid).Total)
+            .ThenBy(pid => pid)
+            .Take(_configuration.MaxConcurrentScans)
+            .ToList();
+    }
+
+    private bool ShouldInspect(Process process)
+    {
+        if (process.HasExited)
+        {
+            return false;
+        }
+
+        if (process.Id <= 4)
+        {
+            return false;
+        }
+
+        if (_configuration.TargetProcesses.Contains(process.ProcessName + ".exe", StringComparer.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var score = _behaviorEngine.GetScore(process.Id);
+        return score.Total >= _behaviorEngine.Configuration.SuspiciousThreshold;
+    }
+
+    private void ScanProcess(int processId)
+    {
+        using var process = GetProcessByIdSafe(processId);
+        if (process is null)
+        {
+            return;
+        }
+
         var now = DateTimeOffset.UtcNow;
         if (_lastScan.TryGetValue(process.Id, out var last) && now - last < _configuration.ScanInterval)
         {
@@ -55,9 +116,15 @@ public sealed class MemoryScanner
         try
         {
             var suspiciousRegions = new List<MemoryRegion>();
+            using var handle = NativeMethods.OpenProcess(NativeMethods.ProcessAccessFlags.QueryInformation | NativeMethods.ProcessAccessFlags.VirtualMemoryRead, false, process.Id);
+            if (handle.IsInvalid)
+            {
+                return;
+            }
+
             var address = IntPtr.Zero;
             var memInfo = new NativeMethods.MEMORY_BASIC_INFORMATION();
-            while (NativeMethods.VirtualQueryEx(process.Handle, address, out memInfo, (uint)Marshal.SizeOf(memInfo))
+            while (NativeMethods.VirtualQueryEx(handle, address, out memInfo, (uint)Marshal.SizeOf(memInfo))
                    != IntPtr.Zero)
             {
                 var protect = (NativeMethods.MemoryProtection)memInfo.Protect;
@@ -97,6 +164,18 @@ public sealed class MemoryScanner
         }
     }
 
+    private static Process? GetProcessByIdSafe(int processId)
+    {
+        try
+        {
+            return Process.GetProcessById(processId);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private sealed record MemoryRegion
     {
         public IntPtr BaseAddress { get; init; }
@@ -113,6 +192,13 @@ public sealed class MemoryScanner
             PAGE_EXECUTE_WRITECOPY = 0x80
         }
 
+        [Flags]
+        public enum ProcessAccessFlags : uint
+        {
+            QueryInformation = 0x0400,
+            VirtualMemoryRead = 0x0010
+        }
+
         [StructLayout(LayoutKind.Sequential)]
         public struct MEMORY_BASIC_INFORMATION
         {
@@ -126,6 +212,9 @@ public sealed class MemoryScanner
         }
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern IntPtr VirtualQueryEx(IntPtr hProcess, IntPtr lpAddress, out MEMORY_BASIC_INFORMATION lpBuffer, uint dwLength);
+        public static extern IntPtr VirtualQueryEx(SafeProcessHandle hProcess, IntPtr lpAddress, out MEMORY_BASIC_INFORMATION lpBuffer, uint dwLength);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern SafeProcessHandle OpenProcess(ProcessAccessFlags processAccess, bool inheritHandle, int processId);
     }
 }

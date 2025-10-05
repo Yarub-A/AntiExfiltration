@@ -89,6 +89,8 @@ public sealed record ProcessMonitoringConfiguration
 public sealed record MemoryScanningConfiguration
 {
     public TimeSpan ScanInterval { get; init; } = TimeSpan.FromSeconds(30);
+    public int MaxConcurrentScans { get; init; } = 5;
+    public string[] TargetProcesses { get; init; } = new[] { "chrome.exe", "msedge.exe", "firefox.exe" };
 };
 
 public sealed record NetworkConfiguration

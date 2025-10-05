@@ -38,10 +38,27 @@ public sealed class NetworkInterceptor
 
     public NetworkInterface? ActiveInterface => _activeInterface;
 
-    public void SwitchInterface(string name)
+    public bool SwitchInterface(string name)
     {
-        _activeInterface = NetworkInterface.GetAllNetworkInterfaces()
+        var target = NetworkInterface.GetAllNetworkInterfaces()
             .FirstOrDefault(n => n.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+
+        if (target is null)
+        {
+            return false;
+        }
+
+        _activeInterface = target;
+        _logger.Log(new
+        {
+            timestamp = DateTimeOffset.UtcNow,
+            eventType = "interfaceSwitched",
+            interfaceName = target.Name,
+            target.NetworkInterfaceType,
+            target.OperationalStatus
+        });
+
+        return true;
     }
 
     public async Task RunAsync(CancellationToken token)
@@ -60,9 +77,18 @@ public sealed class NetworkInterceptor
                 var refreshed = entry with { LastObserved = DateTimeOffset.UtcNow };
                 var key = BuildConnectionKey(refreshed);
                 observedKeys.Add(key);
-                _connections[key] = refreshed;
 
                 var analysis = _packetAnalyzer.Analyze(refreshed);
+                if (!string.IsNullOrEmpty(analysis.PayloadPreview))
+                {
+                    refreshed = refreshed with { PayloadSnapshot = analysis.PayloadPreview };
+                }
+                else if (_connections.TryGetValue(key, out var existing) && !string.IsNullOrEmpty(existing.PayloadSnapshot))
+                {
+                    refreshed = refreshed with { PayloadSnapshot = existing.PayloadSnapshot };
+                }
+
+                _connections[key] = refreshed;
                 if (analysis.Indicators.Count == 0)
                 {
                     continue;
@@ -95,6 +121,7 @@ public sealed class NetworkInterceptor
                     refreshed.RemoteAddress,
                     refreshed.RemotePort,
                     indicators = analysis.Indicators.Select(i => new { i.Description, i.ScoreImpact }),
+                    analysis.PayloadPreview,
                     score.Total,
                     score.Level
                 });
@@ -151,15 +178,18 @@ internal sealed class PacketAnalyzer
     public PacketAnalysisResult Analyze(TcpRow entry)
     {
         var indicators = new List<PacketIndicator>();
+        var highlights = new List<string>();
 
         if (entry.RemotePort == 443 && IPAddress.TryParse(entry.RemoteAddress, out var address) && address.GetAddressBytes()[0] >= 200)
         {
             indicators.Add(new PacketIndicator("unrecognized443", 3));
+            highlights.Add($"Port 443 to {entry.RemoteAddress}");
         }
 
         if (_configuration.HighRiskHosts.Any(host => entry.RemoteAddress.Contains(host, StringComparison.OrdinalIgnoreCase)))
         {
             indicators.Add(new PacketIndicator("highRiskHost", 3));
+            highlights.Add($"Destination matches high-risk host list");
         }
 
         foreach (var keyword in CredentialKeywords)
@@ -167,15 +197,20 @@ internal sealed class PacketAnalyzer
             if (entry.PayloadSnapshot.Contains(keyword, StringComparison.OrdinalIgnoreCase))
             {
                 indicators.Add(new PacketIndicator("exfilKeyword:" + keyword.Trim('='), 4));
+                highlights.Add($"Payload contains '{keyword}'");
             }
         }
 
         var shouldBlock = indicators.Any(i => i.ScoreImpact >= 4);
-        return new PacketAnalysisResult(indicators, shouldBlock);
+        var preview = highlights.Count > 0
+            ? string.Join("; ", highlights)
+            : $"Destination {entry.RemoteAddress}:{entry.RemotePort}";
+
+        return new PacketAnalysisResult(indicators, shouldBlock, preview);
     }
 }
 
-internal sealed record PacketAnalysisResult(IReadOnlyList<PacketIndicator> Indicators, bool ShouldBlock);
+internal sealed record PacketAnalysisResult(IReadOnlyList<PacketIndicator> Indicators, bool ShouldBlock, string PayloadPreview);
 
 internal sealed record PacketIndicator(string Description, int ScoreImpact);
 

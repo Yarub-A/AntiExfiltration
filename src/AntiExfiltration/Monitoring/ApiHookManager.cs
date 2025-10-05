@@ -1,7 +1,9 @@
 using AntiExfiltration.Core;
 using AntiExfiltration.Infrastructure;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Runtime.Versioning;
 
@@ -32,32 +34,51 @@ public sealed class ApiHookManager
     {
         while (!token.IsCancellationRequested)
         {
-            foreach (var process in Process.GetProcesses())
+            var observed = new HashSet<int>();
+
+            foreach (var target in _configuration.TargetProcesses)
             {
-                if (!_configuration.TargetProcesses.Contains(process.ProcessName + ".exe", StringComparer.OrdinalIgnoreCase))
+                var processName = Path.GetFileNameWithoutExtension(target);
+                if (string.IsNullOrWhiteSpace(processName))
                 {
                     continue;
                 }
 
-                if (_hookedProcesses.ContainsKey(process.Id))
+                foreach (var process in Process.GetProcessesByName(processName))
                 {
-                    continue;
-                }
+                    using (process)
+                    {
+                        observed.Add(process.Id);
 
-                if (!ProcessHooker.TryHook(process, out var hookState))
-                {
-                    continue;
-                }
+                        if (_hookedProcesses.ContainsKey(process.Id))
+                        {
+                            continue;
+                        }
 
-                _hookedProcesses[process.Id] = hookState;
-                _logger.Log(new
+                        if (!ProcessHooker.TryHook(process, out var hookState))
+                        {
+                            continue;
+                        }
+
+                        _hookedProcesses[process.Id] = hookState;
+                        _logger.Log(new
+                        {
+                            timestamp = DateTimeOffset.UtcNow,
+                            eventType = "apiHooked",
+                            processId = process.Id,
+                            processName = process.ProcessName,
+                            hookState.Modules
+                        });
+                    }
+                }
+            }
+
+            foreach (var pid in _hookedProcesses.Keys.ToArray())
+            {
+                if (!observed.Contains(pid))
                 {
-                    timestamp = DateTimeOffset.UtcNow,
-                    eventType = "apiHooked",
-                    processId = process.Id,
-                    processName = process.ProcessName,
-                    hookState.Modules
-                });
+                    _hookedProcesses.TryRemove(pid, out _);
+                }
             }
 
             await Task.Delay(TimeSpan.FromSeconds(5), token).ConfigureAwait(false);

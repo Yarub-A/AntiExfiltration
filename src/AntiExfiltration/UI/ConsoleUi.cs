@@ -23,23 +23,117 @@ public sealed class ConsoleUi
         _context = context;
     }
 
-    public async Task RunAsync(CancellationToken token)
+    public Task RunAsync(CancellationToken token)
+        => Task.Run(() => RunLoop(token), token);
+
+    private void RunLoop(CancellationToken token)
     {
+        Console.WriteLine("=== AntiExfiltration Defender ===");
+        Console.WriteLine("Type 'help' to list commands. Press Enter to refresh the dashboard.");
+        Console.WriteLine($"Configured snapshot interval: {_configuration.RefreshInterval.TotalSeconds:0.#}s");
+
         while (!token.IsCancellationRequested)
         {
-            Render();
-            await Task.Delay(_configuration.RefreshInterval, token).ConfigureAwait(false);
+            RenderDashboard();
+            PrintMenu();
+
+            Console.Write("> ");
+            var input = Console.ReadLine();
+            if (input is null)
+            {
+                break;
+            }
+
+            input = input.Trim();
+
+            if (token.IsCancellationRequested)
+            {
+                break;
+            }
+
+            if (string.IsNullOrEmpty(input))
+            {
+                continue;
+            }
+
+            HandleCommand(input);
         }
     }
 
-    private void Render()
+    private void HandleCommand(string input)
     {
-        Console.Clear();
-        Console.WriteLine("=== AntiExfiltration Defender ===");
-        Console.WriteLine($"Interface: {_context.NetworkInterceptor.ActiveInterface?.Name ?? "N/A"}");
+        _logger.Log(new
+        {
+            timestamp = DateTimeOffset.UtcNow,
+            eventType = "uiCommand",
+            command = input
+        });
+
+        switch (input.ToLowerInvariant())
+        {
+            case "1":
+            case "switch":
+                Console.Write("Interface name: ");
+                var name = Console.ReadLine();
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    Console.WriteLine("No interface name was provided.");
+                    break;
+                }
+
+                if (_context.NetworkInterceptor.SwitchInterface(name.Trim()))
+                {
+                    Console.WriteLine($"Switched to interface '{name.Trim()}'.");
+                }
+                else
+                {
+                    Console.WriteLine($"Interface '{name.Trim()}' was not found.");
+                }
+
+                break;
+            case "2":
+            case "list":
+                foreach (var iface in NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    Console.WriteLine($"- {iface.Name} ({iface.NetworkInterfaceType}, {iface.OperationalStatus})");
+                }
+
+                break;
+            case "3":
+            case "integrity":
+                _ = _context.IntegrityChecker.VerifyAsync(CancellationToken.None);
+                Console.WriteLine("Integrity verification scheduled.");
+                break;
+            case "4":
+            case "refresh":
+            case "help":
+                // Refresh handled by the next loop iteration.
+                break;
+            case "5":
+            case "exit":
+                Environment.Exit(0);
+                break;
+            default:
+                Console.WriteLine("Unknown command. Type 'help' to list available options.");
+                break;
+        }
+    }
+
+    private void RenderDashboard()
+    {
+        Console.WriteLine();
+        Console.WriteLine($"--- Snapshot {DateTimeOffset.Now:HH:mm:ss} ---");
+        Console.WriteLine($"Active interface: {_context.NetworkInterceptor.ActiveInterface?.Name ?? "N/A"}");
         Console.WriteLine();
 
-        Console.WriteLine("[أعلى العمليات حسب المخاطر]");
+        RenderProcessSummary();
+        RenderConnectionSummary();
+        RenderHookSummary();
+    }
+
+    private void RenderProcessSummary()
+    {
+        Console.WriteLine("Top processes by risk score:");
         var processes = _context.ProcessMonitor.SnapshotProcesses();
         var ranked = processes
             .Select(p => (Process: p, Score: _context.BehaviorEngine.GetScore(p.ProcessId)))
@@ -50,77 +144,66 @@ public sealed class ConsoleUi
 
         if (ranked.Count == 0)
         {
-            Console.WriteLine("لا توجد بيانات عمليات بعد.");
-        }
-        else
-        {
-            foreach (var entry in ranked)
-            {
-                Console.WriteLine($"PID {entry.Process.ProcessId,-6} {entry.Process.Name,-20} مجموع {entry.Score.Total,3} مستوى {entry.Score.Level}");
-            }
-        }
-
-        Console.WriteLine();
-        Console.WriteLine("[الاتصالات الصادرة الحديثة]");
-        var connections = _context.NetworkInterceptor.SnapshotConnections();
-        if (connections.Count == 0)
-        {
-            Console.WriteLine("لا توجد اتصالات قيد المراقبة.");
-        }
-        else
-        {
-            foreach (var connection in connections.Take(10))
-            {
-                Console.WriteLine(
-                    $"PID {connection.ProcessId,-6} {connection.LocalAddress}:{connection.LocalPort} -> {connection.RemoteAddress}:{connection.RemotePort} (آخر ظهور {connection.LastObserved:HH:mm:ss})");
-            }
-        }
-
-        Console.WriteLine();
-        Console.WriteLine("[Hooked Processes]");
-        foreach (var hook in _context.ApiHookManager.HookedProcesses.Values)
-        {
-            Console.WriteLine($"PID {hook.ProcessId} Modules: {string.Join(',', hook.Modules.Take(5))}");
-        }
-
-        Console.WriteLine();
-        Console.WriteLine("[Options]");
-        Console.WriteLine("1) Switch Interface  2) List Interfaces  3) Run Integrity Check  4) Exit");
-        if (!Console.KeyAvailable)
-        {
+            Console.WriteLine("  No process telemetry has been captured yet.");
+            Console.WriteLine();
             return;
         }
 
-        var key = Console.ReadKey(intercept: true);
-        switch (key.Key)
+        foreach (var entry in ranked)
         {
-            case ConsoleKey.D1:
-            case ConsoleKey.NumPad1:
-                Console.Write("Interface name: ");
-                var name = Console.ReadLine();
-                if (!string.IsNullOrWhiteSpace(name))
-                {
-                    _context.NetworkInterceptor.SwitchInterface(name);
-                }
-                break;
-            case ConsoleKey.D2:
-            case ConsoleKey.NumPad2:
-                foreach (var iface in NetworkInterface.GetAllNetworkInterfaces())
-                {
-                    Console.WriteLine($"- {iface.Name} ({iface.NetworkInterfaceType})");
-                }
-                Console.WriteLine("Press any key to continue...");
-                Console.ReadKey(true);
-                break;
-            case ConsoleKey.D3:
-            case ConsoleKey.NumPad3:
-                _ = _context.IntegrityChecker.VerifyAsync(CancellationToken.None);
-                break;
-            case ConsoleKey.D4:
-            case ConsoleKey.NumPad4:
-                Environment.Exit(0);
-                break;
+            Console.WriteLine(
+                $"  PID {entry.Process.ProcessId,-6} {entry.Process.Name,-20} Score {entry.Score.Total,3} Level {entry.Score.Level}");
         }
+
+        Console.WriteLine();
+    }
+
+    private void RenderConnectionSummary()
+    {
+        Console.WriteLine("Recent outbound connections:");
+        var connections = _context.NetworkInterceptor.SnapshotConnections();
+        if (connections.Count == 0)
+        {
+            Console.WriteLine("  No outbound activity observed.");
+            Console.WriteLine();
+            return;
+        }
+
+        foreach (var connection in connections.Take(10))
+        {
+            var payload = string.IsNullOrEmpty(connection.PayloadSnapshot)
+                ? "No indicators"
+                : connection.PayloadSnapshot;
+
+            Console.WriteLine(
+                $"  PID {connection.ProcessId,-6} {connection.LocalAddress}:{connection.LocalPort} -> {connection.RemoteAddress}:{connection.RemotePort} | {payload} | Last {connection.LastObserved:HH:mm:ss}");
+        }
+
+        Console.WriteLine();
+    }
+
+    private void RenderHookSummary()
+    {
+        Console.WriteLine("Monitored API hook targets:");
+        if (_context.ApiHookManager.HookedProcesses.Count == 0)
+        {
+            Console.WriteLine("  No processes have been instrumented yet.");
+            Console.WriteLine();
+            return;
+        }
+
+        foreach (var hook in _context.ApiHookManager.HookedProcesses.Values)
+        {
+            var modules = hook.Modules.Take(5);
+            Console.WriteLine($"  PID {hook.ProcessId,-6} Modules: {string.Join(", ", modules)}");
+        }
+
+        Console.WriteLine();
+    }
+
+    private void PrintMenu()
+    {
+        Console.WriteLine("Commands: [1] switch  [2] list  [3] integrity  [4] refresh  [5] exit");
     }
 }
 

@@ -21,7 +21,7 @@ public static class Program
             var logPath = ResolveLogPath(configuration.LoggingDirectory, candidate);
             if (logPath is null)
             {
-                Console.Error.WriteLine("لم يتم العثور على ملفات سجل لفكّها.");
+                Console.Error.WriteLine("No encrypted log files were found to decode.");
                 return;
             }
 

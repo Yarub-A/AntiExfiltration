@@ -1,50 +1,50 @@
-# AntiExfiltration Defender
+# AntiExfiltration
 
-أداة دفاعية تعمل على ويندوز لحظر التسريبات الشبكية ومراقبة العمليات والذاكرة، وتسجيل الأحداث في سجلات مشفرة.
+AntiExfiltration is a Windows-focused defensive agent that monitors outbound traffic, process activity, and in-memory anomalies while persisting encrypted JSON audit logs.
 
-## المتطلبات
-- نظام تشغيل ويندوز 10 أو أحدث مع صلاحيات مدير.
-- منصة .NET 8 SDK.
+## Requirements
+- Windows 10 or later with administrative privileges.
+- .NET 8 SDK.
 
-## التثبيت والتشغيل
-1. استنسخ المستودع.
-2. شغّل الأمر:
+## Build and Run
+1. Clone the repository.
+2. Build the solution:
    ```powershell
    dotnet build AntiExfiltration.sln -c Release
    ```
-3. ثم نفّذ التطبيق:
+3. Launch the agent (run from an elevated PowerShell prompt):
    ```powershell
    dotnet run --project src/AntiExfiltration/AntiExfiltration.csproj -c Release
    ```
-4. ستنشأ تلقائيًا شهادة جذر محلية وسجل إعدادات `config.json` وأدلة `logs` و`plugins`.
+4. On first start the agent creates a local root certificate, `config.json`, and the `logs` / `plugins` directories next to the executable.
 
-### فك السجلات المشفّرة
-- لاستخراج أحدث السجلات كنص JSON مقروء:
-  ```powershell
-  dotnet run --project src/AntiExfiltration/AntiExfiltration.csproj -c Release -- --decode-log
-  ```
-- أو مرّر مسار ملف محدد:
-  ```powershell
-  dotnet run --project src/AntiExfiltration/AntiExfiltration.csproj -c Release -- --decode-log "C:\\مسار\\log-20251005.bin"
-  ```
-- يجب تنفيذ الأوامر بحساب Windows نفسه الذي شغّل التطبيق لضمان نجاح DPAPI.
+### Decoding encrypted logs
+Use the built-in decoder to convert encrypted entries into plain JSON:
+```powershell
+dotnet run --project src/AntiExfiltration/AntiExfiltration.csproj -c Release -- --decode-log
+```
+By default the decoder locates the newest log file in the configured `logs` folder. To target a specific file:
+```powershell
+dotnet run --project src/AntiExfiltration/AntiExfiltration.csproj -c Release -- --decode-log "C:\\Path\\to\\log-20251005.bin"
+```
+Run the decoder with the same Windows account that executed the agent so DPAPI can unprotect the key file.
 
-## المكوّنات الرئيسة
-- **SecureLogger**: تسجيل JSON مشفر باستخدام AES-256.
-- **BehaviorEngine**: حساب درجات المخاطر للعمليات.
-- **NetworkInterceptor**: قراءة جدول TCP مع ربطه بالعمليات وتحليل الوجهات.
-- **ProcessMonitor**: مراقبة العمليات، التوقيعات الرقمية، وسلاسل الأوامر.
-- **MemoryScanner**: تفتيش الذاكرة عن صفحات RWX.
-- **ApiHookManager**: تعقب عمليات التهيئة المسموح بها وتثبيت مراقبة وحدات التحميل.
-- **IntegrityChecker**: التحقق من سلامة الملفات الحرجة.
-- **PluginManager**: تحميل إضافات الكشف الديناميكية.
-- **ConsoleUi**: لوحة عرض فورية مع خيارات إدارية.
-- **LogDecoder**: أداة سطر أوامر لفك السجلات المشفرة باستخدام DPAPI وAES.
+## Core Components
+- **SecureLogger**: AES-256 encrypted JSON logging protected with DPAPI.
+- **BehaviorEngine**: Aggregates indicators into per-process risk scores and tiers.
+- **NetworkInterceptor**: Reads the TCP table, correlates connections to processes, and scores destinations.
+- **ProcessMonitor**: Tracks command lines, signatures, and suspicious indicators for each process.
+- **MemoryScanner**: Inspects high-risk processes for RWX pages using VirtualQueryEx.
+- **ApiHookManager**: Observes allow-listed applications and records loaded modules.
+- **IntegrityChecker**: Verifies protected binaries and configuration files.
+- **PluginManager**: Loads custom detection plugins from the `plugins` directory.
+- **ConsoleUi**: Command-driven dashboard for switching interfaces, listing telemetry, and triggering checks.
+- **LogDecoder**: Command-line utility that decrypts log files using the stored DPAPI-protected key.
 
-## ملاحظات أمنية
-- جميع السجلات تُخزَّن محليًا فقط.
-- لا يتم إرسال أي بيانات إلى الإنترنت.
-- لا تُحقن عمليات النظام المحمية.
+## Security Notes
+- All analysis stays on the local device; no telemetry is transmitted externally.
+- The agent never injects into protected Windows system processes.
+- Encrypted logs and the DPAPI-protected `log.key` file remain in the `logs` folder and should be secured with NTFS ACLs.
 
-## الاختبارات
-لم يتم تضمين اختبارات تلقائية نظرًا لاعتماد التطبيق على واجهات نظام ويندوز منخفضة المستوى.
+## Testing
+The solution relies on Windows APIs (WFP, DPAPI, WMI, VirtualQueryEx). Automated tests are not included because the instrumentation requires elevated privileges on Windows hosts.

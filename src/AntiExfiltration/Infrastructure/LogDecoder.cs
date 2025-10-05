@@ -9,13 +9,13 @@ public static class LogDecoder
     {
         if (string.IsNullOrWhiteSpace(logFilePath))
         {
-            Console.Error.WriteLine("مسار ملف السجل غير صالح.");
+            Console.Error.WriteLine("The supplied log file path is empty.");
             return 1;
         }
 
         if (!File.Exists(logFilePath))
         {
-            Console.Error.WriteLine($"تعذر العثور على ملف السجل: {logFilePath}");
+            Console.Error.WriteLine($"Log file not found: {logFilePath}");
             return 1;
         }
 
@@ -23,8 +23,8 @@ public static class LogDecoder
         var keyPath = Path.Combine(directory, "log.key");
         if (!File.Exists(keyPath))
         {
-            Console.Error.WriteLine($"تعذر العثور على ملف المفتاح المحمي (log.key) بجوار {logFilePath}.");
-            Console.Error.WriteLine("تأكد أنك تشغّل الأمر على نفس الجهاز وبنفس الحساب الذي أنشأ السجلات.");
+            Console.Error.WriteLine($"Protected key file (log.key) was not found next to {logFilePath}.");
+            Console.Error.WriteLine("Run the decoder on the same machine and with the same Windows account that generated the logs.");
             return 1;
         }
 
@@ -41,7 +41,7 @@ public static class LogDecoder
         }
         catch (CryptographicException ex)
         {
-            Console.Error.WriteLine("فشل فك حماية المفتاح عبر DPAPI. استخدم نفس حساب Windows الذي قام بتشغيل AntiExfiltration.");
+            Console.Error.WriteLine("Failed to unprotect the key using DPAPI. Use the same Windows account that executed AntiExfiltration.");
             Console.Error.WriteLine(ex.Message);
             return 1;
         }
@@ -61,7 +61,7 @@ public static class LogDecoder
                 var decoded = Convert.FromBase64String(line.Trim());
                 if (decoded.Length <= 16)
                 {
-                    Console.Error.WriteLine($"سطر {index}: بيانات غير كافية بعد فك Base64.");
+                    Console.Error.WriteLine($"Line {index}: entry shorter than IV + ciphertext.");
                     continue;
                 }
 
@@ -80,7 +80,7 @@ public static class LogDecoder
             }
             catch (Exception ex) when (ex is FormatException or CryptographicException)
             {
-                Console.Error.WriteLine($"سطر {index}: فشل فك التشفير - {ex.Message}");
+                Console.Error.WriteLine($"Line {index}: decryption failed - {ex.Message}");
             }
         }
 
