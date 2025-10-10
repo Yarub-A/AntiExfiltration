@@ -53,12 +53,42 @@
 
 > **تنبيه أمني:** الصورة الحالية تعتمد على مخازن داخلية (InMemory). لا تستخدمها في الإنتاج بدون استبدالها بمخازن آمنة (PostgreSQL/Redis) وإضافة طبقة تحقق صلاحيات أدق.
 
-## تشغيل الخدمة عبر .NET مباشرة
-```bash
-dotnet restore ManagementAPI/ManagementAPI.csproj
-dotnet run --project ManagementAPI/ManagementAPI.csproj
-```
-ستجد الخدمة على `https://localhost:5001` افتراضيًا، ويمكن تعديل المنافذ عبر `ASPNETCORE_URLS`.
+## تشغيل الخدمة عبر .NET مباشرة (بدون Docker)
+1. ثبّت حزمة الشهادات التطويرية (اختياريًا لتجنب تحذير HTTPS):
+   ```bash
+   dotnet dev-certs https --trust
+   ```
+2. اضبط أسرار التطوير لمرة واحدة باستخدام **User Secrets**:
+   ```bash
+   cd ManagementAPI
+   dotnet user-secrets init
+   dotnet user-secrets set "JWT_SECRET" "توكين_قوي_بطول_32_محرفًا_على_الأقل"
+   dotnet user-secrets set "MANAGEMENT_API_KEY" "api-key-محلي-للاختبار"
+   cd ..
+   ```
+   > **ملاحظة:** إذا لم ترغب في استخدام User Secrets، يمكنك تمرير القيم كمتغيرات بيئة مباشرة قبل تشغيل الأمر `dotnet run`.
+3. استرجع الحزم ثم شغّل الخدمة:
+   ```bash
+   dotnet restore ManagementAPI/ManagementAPI.csproj
+   dotnet run --project ManagementAPI/ManagementAPI.csproj
+   ```
+   سيعمل التطبيق على العناوين `https://localhost:5001` و`http://localhost:5000` (يمكن تعديلهما في `ManagementAPI/Properties/launchSettings.json`).
+4. احصل على رمز JWT ثم نفّذ طلبات الاختبار:
+   ```bash
+   curl -X POST https://localhost:5001/v1/auth/token \
+     -k \
+     -H "Content-Type: application/json" \
+     -d '{"clientId":"cli-sample","apiKey":"api-key-محلي-للاختبار"}'
+
+   curl -X GET https://localhost:5001/v1/agents \
+     -k \
+     -H "Authorization: Bearer <TOKEN>"
+   ```
+   استخدم الخيار `-k` لتعطيل التحقق من الشهادة أثناء التطوير فقط.
+   إذا رغبت في العمل عبر HTTP فقط لتجنب تحذير إعادة التوجيه، شغّل الخدمة مؤقتًا باستخدام:
+   ```bash
+   ASPNETCORE_URLS=http://localhost:5000 dotnet run --project ManagementAPI/ManagementAPI.csproj
+   ```
 
 ## نشر Kubernetes
 1. عدّل قيم الأسرار والصور في ملفات `deploy/k8s`.
