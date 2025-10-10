@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: forensics-pvc
+  namespace: dataexfil
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: forensics-store
+  namespace: dataexfil
+spec:
+  serviceName: forensics
+  replicas: 1
+  selector:
+    matchLabels:
+      app: forensics
+  template:
+    metadata:
+      labels:
+        app: forensics
+    spec:
+      containers:
+        - name: forensics
+          image: ghcr.io/yourorg/forensics:latest
+          volumeMounts:
+            - name: store
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: store
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 50Gi

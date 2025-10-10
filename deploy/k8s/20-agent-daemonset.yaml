@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: agent-service
+  namespace: dataexfil
+spec:
+  selector:
+    matchLabels:
+      app: agent
+  template:
+    metadata:
+      labels:
+        app: agent
+    spec:
+      containers:
+        - name: agent
+          image: ghcr.io/yourorg/agent:latest
+          securityContext:
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+          env:
+            - name: MANAGEMENT_API
+              value: http://management-api.dataexfil.svc.cluster.local:8080
+          volumeMounts:
+            - name: host-proc
+              mountPath: /host/proc
+              readOnly: true
+      volumes:
+        - name: host-proc
+          hostPath:
+            path: /proc
