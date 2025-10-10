@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: management-api
+  namespace: dataexfil
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: management-api
+  template:
+    metadata:
+      labels:
+        app: management-api
+    spec:
+      containers:
+        - name: management-api
+          image: ghcr.io/yourorg/managementapi:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ASPNETCORE_URLS
+              value: http://+:8080
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: management-secrets
+                  key: jwt-secret
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "200Mi"
+            limits:
+              cpu: "500m"
+              memory: "500Mi"

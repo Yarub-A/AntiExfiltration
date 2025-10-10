@@ -1,0 +1,137 @@
+openapi: 3.0.3
+info:
+  title: DataExfiltrationShield Management API
+  version: 1.0.0
+  description: >-
+    API لإدارة النظام، استلام الأحداث، واستجابات الحوادث.
+servers:
+  - url: https://management.api.local
+    description: Local management endpoint
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Event:
+      type: object
+      required:
+        - agentId
+        - timestamp
+        - type
+        - payload
+      properties:
+        agentId:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        type:
+          type: string
+          description: "event category e.g. process, network, memory"
+        payload:
+          type: object
+    Incident:
+      type: object
+      properties:
+        id:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        processId:
+          type: integer
+        severity:
+          type: string
+          enum:
+            - low
+            - medium
+            - high
+            - critical
+        artifacts:
+          type: array
+          items:
+            type: object
+paths:
+  /v1/events:
+    post:
+      summary: استلام حدث من Agent
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Event'
+      responses:
+        '202':
+          description: accepted
+  /v1/incidents/{id}:
+    get:
+      summary: جلب تفاصيل الحادث
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: incident details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Incident'
+  /v1/actions/quarantine:
+    post:
+      summary: طلب عزل عملية أو حظر اتصالات
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                processId:
+                  type: integer
+                action:
+                  type: string
+                  enum:
+                    - network-quarantine
+                    - soft-suspend
+                    - terminate
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: action accepted
+  /v1/agents:
+    get:
+      summary: قائمة الـ Agents المتصلة
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: array of agents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    hostname:
+                      type: string
+                    lastSeen:
+                      type: string
+                      format: date-time
+                    status:
+                      type: string

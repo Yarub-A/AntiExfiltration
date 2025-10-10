@@ -1,0 +1,32 @@
+version: '3.8'
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "15672:15672"
+      - "5672:5672"
+  managementapi:
+    build:
+      context: .
+      dockerfile: ManagementAPI/Dockerfile
+    ports:
+      - "8443:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - JWT_SECRET=${JWT_SECRET}
+      - MANAGEMENT_API_KEY=${MANAGEMENT_API_KEY}
+      - RABBITMQ_HOST=rabbitmq
+    depends_on:
+      - rabbitmq
+  analyzer:
+    image: ghcr.io/yourorg/analyzer:latest
+    depends_on:
+      - rabbitmq
+  agent:
+    image: ghcr.io/yourorg/agent:latest
+    restart: unless-stopped
+    environment:
+      - MANAGEMENT_API=http://managementapi:8080
